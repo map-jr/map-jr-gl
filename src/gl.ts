@@ -321,11 +321,13 @@ void main() {
     // Buildings: roofs and walls with a height in meters and a baked light level.
     extrusion: [`${VS_COMMON} ${TERRAIN_GLSL}
 layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in float a_ed; layout(location=3) in vec2 a_centroid; out vec4 v_color; out vec2 v_p; out float v_side;
-uniform mat3 u_pat; uniform float u_hf; uniform float u_pattern; uniform vec4 u_color; uniform vec3 u_lightPos; uniform vec3 u_lightColor; uniform float u_lightIntensity; uniform float u_gradient; uniform vec3 u_cell;
+uniform mat3 u_pat; uniform float u_hf; uniform float u_pattern; uniform vec4 u_color; uniform vec3 u_lightPos; uniform vec3 u_lightColor; uniform float u_lightIntensity; uniform float u_gradient; uniform vec2 u_cell; uniform int u_cells;
 void main() {
-  // On 3D terrain a draw keeps only the polygons whose centroid lies in the tile at the offset u_cell.xy (the ground is then
-  // read from the elevation tile under that tile; see "buildings" in the draw of the layers).
-  if (u_cell.z > 0.5 && clamp(floor(a_centroid / ${EXTENT}.0), -1.0, 1.0) != u_cell.xy) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
+  // On 3D terrain a draw keeps only the polygons whose centroid lies in the tiles of the bits of u_cells (bit 0 for the
+  // tile to the north west, 4 for this tile). The ground is read as if this tile were at the offset u_cell; see
+  // "buildings" in the draw of the layers.
+  ivec2 cell = ivec2(clamp(floor(a_centroid / ${EXTENT}.0), -1.0, 1.0)) + 1;
+  if (u_cells != 0 && (u_cells >> (cell.x + 3 * cell.y) & 1) == 0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
   // The light model of MapLibre. A face is brighter when it looks at the light; a dark color is made brighter by
   // more than a light color. Walls are darker near the ground (the vertical gradient).
   bool roof = a_v.w < 0.0; float other = floor(a_v.w / ${WALL_OTHER}.0), rest = a_v.w - other * ${WALL_OTHER}.0, t = rest >= ${WALL_TOP}.0 ? 1.0 : 0.0, angle = rest - t * ${WALL_TOP}.0 - ${Math.PI};
@@ -345,7 +347,7 @@ void main() {
   v_side = horizonSide(a_v.xy);
   // On 3D terrain the whole polygon stands on the ground at its centroid, and a base of 0 reaches 10 m lower, so that
   // the walls go into a slope (as in MapLibre GL JS).
-  gl_Position = toClip3D(a_v.xy, a_v.z + ground(a_centroid / ${EXTENT}.0 - u_cell.xy) - (u_exag != 0.0 && !roof && t < 0.5 && a_v.z <= 0.0 ? 10.0 : 0.0));
+  gl_Position = toClip3D(a_v.xy, a_v.z + ground(a_centroid / ${EXTENT}.0 - u_cell) - (u_exag != 0.0 && !roof && t < 0.5 && a_v.z <= 0.0 ? 10.0 : 0.0));
 }`, `
 uniform float u_pattern; in vec4 v_color; in vec2 v_p; in float v_side; out vec4 o; ${PATTERN_GLSL}
 // (Buildings are not cut at the edge of the tile, as in MapLibre GL JS. The piece of a building in the buffer of a tile
@@ -1267,13 +1269,20 @@ export class GLRenderer {
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
             const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [];
             // Buildings on 3D terrain stand on the ground at the centroid of their polygon, which can lie in a neighboring
-            // tile (see tessellateExtrusion). The elevation tile under this tile can end at its edge, so a batch is drawn once
-            // for each tile that holds a centroid, with the elevation tile under that tile (#2287).
+            // tile (see tessellateExtrusion). Where that tile has another elevation tile (this one ends at the edge), the
+            // polygons with their centroid there are drawn in a draw of their own, with the elevation tile under that tile
+            // (#2287). A tile and its neighbors usually share one elevation tile, and are then drawn in one draw.
             const buildings = (u: Record<string, WebGLUniformLocation>, b: GLBuffers, id: TileID) => {
-                for (let k = 0; k < 9; k++) if (s.terrain ? b.cells >> k & 1 : k === 4) {
-                    const dx = k % 3 - 1, dy = (k - k % 3) / 3 - 1, n = 2 ** id.z;
-                    gl.uniform3f(u.u_cell, dx, dy, s.terrain ? 1 : 0);
-                    this.bindDem(u, s.terrain ? s.terrain.dem(k === 4 ? id : {...id, x: (id.x + dx + n) % n, y: id.y + dy}) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
+                const t = s.terrain, n = 2 ** id.z, own = t?.dem(id), apart: [number, DemRef | null][] = [];
+                let mine = t ? 16 : 0;
+                for (let k = 0; t && k < 9; k++) if (k !== 4 && b.cells >> k & 1) {
+                    const dem = t.dem({...id, x: (id.x + k % 3 - 1 + n) % n, y: id.y + (k - k % 3) / 3 - 1});
+                    if (dem?.tex === own?.tex) mine |= 1 << k; else apart.push([k, dem]);
+                }
+                for (const [k, dem] of [[4, own ?? null], ...apart] as [number, DemRef | null][]) {
+                    gl.uniform1i(u.u_cells, k === 4 ? mine : 1 << k);
+                    gl.uniform2f(u.u_cell, k === 4 ? 0 : k % 3 - 1, k === 4 ? 0 : (k - k % 3) / 3 - 1);
+                    this.bindDem(u, dem, t?.exaggeration ?? 0, t ? s.tr.elevation : 0);
                     gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
                 }
             };
