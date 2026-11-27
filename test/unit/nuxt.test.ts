@@ -54,3 +54,11 @@ test('options of the module, such as the key mapJr of nuxt.config, give one warn
     assert.equal(seen.length, 1);
     assert.match(seen[0], /^\[map-jr-gl\] E1241 nuxt\.config: .*has no options, so it ignores "style"\./);
 });
+
+test('the production file dist/nuxt.js prints the short form of the warning in Node (#2148)', async () => {
+    const built = (await import('../../dist/nuxt.js')).default;
+    const warn = console.warn, seen: string[] = [];
+    console.warn = (...args: unknown[]) => { seen.push(args.join(' ')); };
+    try { built.setup({style: 'x'}, {options: {}}); } finally { console.warn = warn; }
+    assert.deepEqual(seen, ['[map-jr-gl] E1241 https://map-jr.org/e/1241 keys="\\"style\\""']);
+});
