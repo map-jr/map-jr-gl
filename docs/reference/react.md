@@ -1,3 +1,9 @@
+  const firstView = await renderFirstView(
+    firstViewOptions({
+      style: 'https://styles.map-jr.org/1/elevation-zero.json',
+      initialView: {center: [-74.0065, 40.7085], zoom: 13.6},
+    }),
+  );
 # React components and hooks
 
 The entry `@map-jr/map-jr-gl/react` renders a map of `@map-jr/map-jr-gl` as a React component, for React 18 and 19.
@@ -218,12 +224,13 @@ The built files of the entry start with `'use client'`, so a server component of
 so the page contains the HTML of `firstView` twice.
 
 ```jsx
-import {renderFirstView} from '@map-jr/map-jr-gl/server';
+import {renderFirstView, firstViewOptions} from '@map-jr/map-jr-gl/server';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 
 export default async function Page() {
   // The same style and view as the map in the browser, at the size that the map
-  // has on most screens.
+  // has on most screens (800 by 500 pixels unless the second argument of
+  // firstViewOptions says otherwise).
   const firstView = await renderFirstView({
     style: 'https://styles.map-jr.org/1/elevation-zero.json',
     center: [-74.0065, 40.7085],

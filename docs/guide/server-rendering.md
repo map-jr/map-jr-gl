@@ -136,29 +136,33 @@ from the entry and needs no client file of its own:
 
 ```jsx
 // app/page.jsx, a server component
-import {renderFirstView} from '@map-jr/map-jr-gl/server';
+import {renderFirstView, firstViewOptions} from '@map-jr/map-jr-gl/server';
 import {MapJr} from '@map-jr/map-jr-gl/react';
 
 const style = 'https://styles.map-jr.org/1/elevation-zero.json';
-const view = {center: [-74.0065, 40.7085], zoom: 13.6};
+const initialView = {center: [-74.0065, 40.7085], zoom: 13.6};
 
 export default async function Page() {
-  const firstView = await renderFirstView({
-    style,
-    ...view,
-    width: 800,
-    height: 500,
-  }).catch(() => '');
+  // The description of the map: the same fields as the props of MapJr.
+  const description = {style, initialView};
+  const firstView = await renderFirstView(firstViewOptions(description)).catch(
+    () => '',
+  );
   return (
     <div style={{height: 500}}>
-      <MapJr mapStyle={style} initialView={view} firstView={firstView} />
+      <MapJr mapStyle={style} initialView={initialView} firstView={firstView} />
     </div>
   );
 }
 ```
 
+[`firstViewOptions`](../reference/server.md#firstviewoptions) turns a description into the options of
+`renderFirstView`, so that the page does not copy the fields by hand. It takes the size from its second argument
+(`{width: 800, height: 500}` when not set).
+
 The adapter for Svelte has no server rendering. Put the HTML of `renderFirstView` into the element of the map
-(`{@html firstView}`), as in the main API.
+(`{@html firstView}`), as in the main API. Make its options with `firstViewOptions(description)` from the same
+description that the page passes to `mapJr`.
 
 Two things go wrong most often:
 
@@ -166,7 +170,8 @@ Two things go wrong most often:
   another. Pass the server the same `style`, `sources`, `layers`, `data`, `images`, `colorScheme` and `globalState` as the map. Pass
   `center`, `zoom` and `bearing` of `initialView` as options of the same names, and its `bounds`, `fitPadding` and
   `fitMaxZoom` as `bounds`, `padding` and `fitMaxZoom`. The Vue component
-  and `renderElement` pass all of them themselves.
+  and `renderElement` pass all of them themselves, and `firstViewOptions(description)` does the same for a page that
+  calls `renderFirstView` (see [Show the first view before the script runs](#show-the-first-view-before-the-script-runs)).
 - The element of the map has no `position`. The first view is positioned at `inset: 0`, so the element needs
   `position: relative` or another position that is not `static`. The Vue and React components and `<map-jr>` set it.
 
@@ -212,9 +217,10 @@ const firstView = await renderFirstView({
 ```
 
 The Vue component and `renderElement` do this with the `controls`, `locale`, `nonce`, `minZoom`, `maxZoom`, `projection`
-and `attribution` of the description, and no option is needed. With React or Svelte, pass the same fields to
-`renderFirstView` (`attribution: false` of the description is `attribution: false` there, and its other
-`attribution` options are `attributionOptions`).
+and `attribution` of the description, and no option is needed. With React or Svelte, call
+`renderFirstView(firstViewOptions(description))`, which passes the same fields (`attribution: false` of the
+description is `attribution: false` of the options, and its other `attribution` options are `attributionOptions`).
+Without the helper, pass these fields to `renderFirstView` by hand.
 
 - The scale has the length that it has at the center of the first view. The compass shows the bearing of the view.
 - A button of the first view does nothing until the map takes over. When the map never takes over (the style does not
