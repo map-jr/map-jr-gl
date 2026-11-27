@@ -370,6 +370,32 @@ for (const mode of renderers) {
             return result;
         }, mode);
         check(`[${mode}] a map with pitch 85: queryRenderedFeatures finds an icon moved by icon-translate near the bottom of the view (#2021)`, near.drawn[0] > 260 && near.found === 1, JSON.stringify(near));
+        // On a pitched map circle-translate moves the center of a circle in tile units for both anchors, as MapLibre GL JS
+        // does: [0, 60] at pitch 60 draws the circle about 32 pixels below its point, not 60 (#644). The places are those
+        // that MapLibre GL JS 5 draws (measured): (200, 232.4) at bearing 0 with `map` and at bearing 30 with
+        // `viewport`, and (232, 227.5) at bearing 30 with `map`.
+        const circles = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = {};
+            for (const [bearing, anchor] of [[0, 'map'], [30, 'map'], [30, 'viewport']]) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:60'}));
+                const style = {version: 8, sources: {p: {type: 'geojson', data: {type: 'Point', coordinates: [10, 45]}}},
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ffffff'}}, {id: 'c', type: 'circle', source: 'p', paint: {'circle-radius': 6, 'circle-color': '#0000ff', 'circle-translate': [0, 60], 'circle-translate-anchor': anchor}}]};
+                const map = new mod.Map({container: el, style, center: [10, 45], zoom: 5, pitch: 60, bearing, renderer, attributionControl: false});
+                await new Promise(r => { map.once('idle', r); setTimeout(r, 15000); });
+                const bmp = await createImageBitmap(await map.toBlob()), c = (typeof OffscreenCanvas === 'function' ? new OffscreenCanvas(bmp.width, bmp.height) : Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height})).getContext('2d');
+                c.drawImage(bmp, 0, 0);
+                const d = c.getImageData(0, 0, bmp.width, bmp.height).data, k = bmp.width / 400;
+                let sx = 0, sy = 0, n = 0;
+                for (let i = 0; i < d.length; i += 4) if (d[i] < 60 && d[i + 2] > 200) { sx += (i / 4) % bmp.width; sy += Math.floor(i / 4 / bmp.width); n++; }
+                const x = sx / n / k, y = sy / n / k, found = async (px, py) => (await map.queryRenderedFeatures([[px - 2, py - 2], [px + 2, py + 2]], {layers: ['c']})).length;
+                out[`${bearing} ${anchor}`] = {drawn: [+x.toFixed(1), +y.toFixed(1)], atDrawn: await found(x, y)};
+                map.remove(); el.remove();
+            }
+            return out;
+        }, mode);
+        const near1 = ([x, y], [ex, ey]) => Math.abs(x - ex) < 1.5 && Math.abs(y - ey) < 1.5;
+        check(`[${mode}] a pitched map: circle-translate moves a circle in tile units for both anchors, as MapLibre GL JS, and queryRenderedFeatures finds it there (#644)`,
+            near1(circles['0 map'].drawn, [200, 232.4]) && near1(circles['30 map'].drawn, [232, 227.5]) && near1(circles['30 viewport'].drawn, [200, 232.4]) && Object.values(circles).every(m => m.atDrawn === 1), JSON.stringify(circles));
         // A loaded Mercator map that switches to the globe waits for the cut tiles, and then draws the globe.
         const switched = await page.evaluate(async () => {
             const m = window.flatMap, t0 = performance.now();

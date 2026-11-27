@@ -9,7 +9,7 @@ import {GLRenderer, SPRITE_ATLAS, type DemRef, type GLTile, type TerrainTile} fr
 import {boxAround, CollisionGrid, flatSize, FULL_CLIP, groundCorners, moveLabel, perspective, placeLabels, quadBox, tooFar, renderItems, type Placed, type RenderItem} from './placement.ts';
 import {BASELINE, EM, GlyphAtlas} from './text.ts';
 import {fetchWith, finalFailure, httpError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
-import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, setBox, setReach, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
+import {decodeElevation, sampleElevation, featureKey, tilesUnderBox, circleCenters, circleRadius, circleTouches, pitchedCircles, movedCenter, setBox, setReach, type QueriedFeature, type QuerySet, type DemEncoding} from './query.ts';
 import type {ElevationTile, FeatureStates, TileBackend, TileRequest} from './tiles.ts';
 import {globeBuild, overlaps, type TileGL} from './tile.ts';
 import {fetchTile, heads} from './tile-fetch.ts';
@@ -1227,7 +1227,7 @@ export class Engine {
             const L = radii.has(f.layer!) && this.layers.find(l => l.id === f.layer);
             if (L && !this.underIcon(L, f, c.box, radii.get(f.layer!)!, shown.get(f.layer!)!, icons.get(f.layer!)!)) return false;
             const circle = circles.get(f.layer!);
-            if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, mercX(lng), mercY(lat), setBox(c.box, circle), circleRadius(circle, f, this.states.f[f.source]), circle.pitch!))) return false;
+            if (circle && !circleCenters(f.geometry!).some(([lng, lat]) => circleTouches(this.tr, ...movedCenter(this.tr, circle, mercX(lng), mercY(lat)), c.box, circleRadius(circle, f, this.states.f[f.source]), circle.pitch!))) return false;
             if ((L || circle) && !c.geometry) delete f.geometry;
             const key = featureKey(f);
             return !key || (seen.has(key) ? false : (seen.add(key), true));
