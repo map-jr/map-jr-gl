@@ -121,8 +121,13 @@ export const MapOverlay = defineComponent({
          * @default false
          */
         popup: Boolean,
-        /** Called when the user closes the popup, as the listener `@close`. With it, the popup has a button to close it. */
+        /** Called when the user closes the popup, as the listener `@close`. With it, and without `closeButton`, the popup has a button to close it. */
         onClose: Function as PropType<() => void>,
+        /**
+         * Whether the popup has a button to close it. The button closes the popup, so `@close` is not needed for that.
+         * @default true when `onClose` is set, else false
+         */
+        closeButton: {type: Boolean, default: undefined},
         /**
          * Whether the user can drag the content. A popup cannot be dragged. The events `dragstart`, `drag` and `dragend` receive `[lng, lat]`.
          * @default false
@@ -133,7 +138,7 @@ export const MapOverlay = defineComponent({
     setup(props, {slots, emit}) {
         const host = useMapInstance(), el = shallowRef<HTMLElement | null>(null), shown = shallowRef(false);
         let overlay: Overlay | null = null;
-        const options = (): OverlayOptions => ({lngLat: [props.lngLat[0], props.lngLat[1]], anchor: props.anchor, offset: props.offset && [props.offset[0], props.offset[1]], popup: props.popup, onClose: props.onClose,
+        const options = (): OverlayOptions => ({lngLat: [props.lngLat[0], props.lngLat[1]], anchor: props.anchor, offset: props.offset && [props.offset[0], props.offset[1]], popup: props.popup, onClose: props.onClose, closeButton: props.closeButton,
             draggable: props.draggable, onDragStart: p => emit('dragstart', p), onDrag: p => emit('drag', p), onDragEnd: p => emit('dragend', p)});
         // The map starts after this component is there, so the element is put on the map when the two exist.
         watch([host, el, options], ([map, element, o]) => {

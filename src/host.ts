@@ -403,8 +403,13 @@ export interface OverlayOptions {
      * @default false
      */
     popup?: boolean;
-    /** Called when the user closes the popup. With it, the popup has a button to close it. */
+    /** Called when the user closes the popup. With it, and without `closeButton`, the popup has a button to close it. */
     onClose?: () => void;
+    /**
+     * Whether the popup has a button to close it. The button closes the popup, so `onClose` is not needed for that.
+     * @default true when `onClose` is set, else false
+     */
+    closeButton?: boolean;
     /**
      * Whether the user can drag the element. A popup cannot be dragged. To keep a dropped element in place across updates, pass its
      * new position to `lngLat` in `onDragEnd`.
@@ -1337,7 +1342,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
                     m.on('dragstart', () => now.onDragStart?.(at())); m.on('drag', () => now.onDrag?.(at())); m.on('dragend', () => now.onDragEnd?.(at()));
                     return m;
                 }
-                const p = new GlassPopup({anchor: now.anchor, offset: now.offset, closeButton: !!now.onClose, closeOnClick: false}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
+                const p = new GlassPopup({anchor: now.anchor, offset: now.offset, closeButton: now.closeButton ?? !!now.onClose, closeOnClick: false}).setLngLat(now.lngLat).setDOMContent(element).addTo(map);
                 // (`destroy()` closes the popup with the map. That is not the user's close, so `onClose` does not run.)
                 p.on('close', () => { if (alive && made === p) now.onClose?.(); });
                 // (Escape or the button then returns the focus to the element that had it, else to the map.)
@@ -1347,7 +1352,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
             };
             let made: Marker | Popup | null = make();
             const set = (next: OverlayOptions) => {
-                const again = !!next.popup !== !!now.popup || next.anchor !== now.anchor || String(next.offset) !== String(now.offset) || !!next.onClose !== !!now.onClose;
+                const again = !!next.popup !== !!now.popup || next.anchor !== now.anchor || String(next.offset) !== String(now.offset) || (next.closeButton ?? !!next.onClose) !== (now.closeButton ?? !!now.onClose);
                 // (Only a new position moves the element: a render during or after a drag that passes the same
                 // `lngLat` again leaves it where the user put it.)
                 const moved = String(next.lngLat) !== String(now.lngLat);

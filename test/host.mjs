@@ -2640,7 +2640,7 @@ for (const renderer of renderers) {
             } finally { console.warn = log; }
             return said; });
         check(`[${renderer}] an unknown option of overlay(), update() and patch() gives one warning for each option, which names the option and the known options`,
-            overlayUnknown.length === 3 && overlayUnknown[0] === '[map-jr-gl] E1647 overlay(): "lnglat" is not an option of an overlay, so it has no effect. Write "lngLat". The options are lngLat, anchor, offset, popup, onClose, draggable, onDragStart, onDrag, onDragEnd.'
+            overlayUnknown.length === 3 && overlayUnknown[0] === '[map-jr-gl] E1647 overlay(): "lnglat" is not an option of an overlay, so it has no effect. Write "lngLat". The options are lngLat, anchor, offset, popup, onClose, closeButton, draggable, onDragStart, onDrag, onDragEnd.'
             && overlayUnknown[1].startsWith('[map-jr-gl] E1647 update(): "colour" is not an option of an overlay, so it has no effect. The options are')
             && overlayUnknown[2].startsWith('[map-jr-gl] E1647 patch(): "Anchor" is not an option of an overlay, so it has no effect. Write "anchor".'), JSON.stringify(overlayUnknown));
         // A draggable overlay (#167): a click is a click, a drag starts after a move, the map does not pan under it, and
@@ -2838,6 +2838,28 @@ for (const renderer of renderers) {
         });
         check(`[${renderer}] Escape closes a popup of overlay() that has onClose and holds the focus, the focus goes to the map (also from a button in the content), and a popup without onClose stays open`,
             escape.focused && escape.closes === 1 && escape.gone && escape.focus && escape.plainOpen && escape.innerFocused && escape.innerFocus, JSON.stringify(escape));
+        // #1152: `closeButton` gives a popup of overlay() a close button without `onClose`, and `false` takes the button of `onClose` away.
+        const closeButton = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const lngLat = t.host.state.get().view.center, made = [];
+            const popup = options => { const el = document.createElement('div'); el.textContent = 'x'; made.push(t.host.overlay(el, {lngLat, popup: true, ...options})); return el; };
+            const has = el => !!el.closest('.map-jr-popup-content')?.querySelector('button');
+            let closes = 0;
+            const withButton = popup({closeButton: true}), plain = popup({}), off = popup({closeButton: false, onClose() { closes++; }}), byClose = popup({onClose() { closes++; }});
+            await wait(300);
+            const shown = {withButton: has(withButton), plain: has(plain), off: has(off), byClose: has(byClose)};
+            withButton.closest('.map-jr-popup-content').querySelector('button').click();
+            await wait(500);
+            const closed = !withButton.isConnected, others = plain.isConnected;
+            const ov = made[1];
+            ov.patch({closeButton: true});
+            await wait(300);
+            const patched = has(plain);
+            for (const o of made) o.remove();
+            return {shown, closed, others, patched, closes};
+        });
+        check(`[${renderer}] a popup of overlay() with closeButton has a button without onClose and the button closes it, closeButton: false takes the button of onClose away, and patch() adds it`,
+            closeButton.shown.withButton && !closeButton.shown.plain && !closeButton.shown.off && closeButton.shown.byClose && closeButton.closed && closeButton.others && closeButton.patched && closeButton.closes === 0, JSON.stringify(closeButton));
         // #866: a popup of overlay() that opens from a key press on the map takes the focus, and Escape returns it to the
         // map. A popup that opens from a click leaves the focus where it is.
         await page.evaluate(() => {

@@ -840,7 +840,7 @@ The pointer events of an overlay reach the page as usual, and a press on an over
 element with `draggable` starts once the pointer has moved 3 pixels. A click without that move calls no drag
 callback, and the click at the end of a drag does not reach the element.
 
-A popup with `onClose` closes on the Escape key while the keyboard focus is inside it. A popup stays open when the
+A popup with a close button (see `closeButton`) closes on the Escape key while the keyboard focus is inside it. A popup stays open when the
 map moves.
 
 A popup that the user opens from the keyboard takes the focus. The map counts a popup as opened from the keyboard
@@ -858,6 +858,7 @@ the focus returns to the element of the map that had it before.
 | `offset` | `[number, number]` | | A distance in CSS pixels from the position, to the right and down. |
 | `popup` | `boolean` | `false` | Whether the element is shown in a box with a tip that points to the position (a popup). |
 | `onClose` | `() => void` | | Called when the user closes the popup. |
+| `closeButton` | `boolean` | true when `onClose` is set, else false | Whether the popup has a button to close it. |
 | `draggable` | `boolean` | `false` | Whether the user can drag the element. |
 | `onDragStart` | `(lngLat: Position) => void` | | Called with the position of the element, `[lng, lat]`, when a drag starts. |
 | `onDrag` | `(lngLat: Position) => void` | | Called with the position of the element, `[lng, lat]`, at each move of a drag. |

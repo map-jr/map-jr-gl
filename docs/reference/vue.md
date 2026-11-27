@@ -338,6 +338,7 @@ const popupOpen = ref(true);
 | `offset` | `[number, number]` | | A distance in CSS pixels from the position, to the right and down. |
 | `popup` | `boolean` | `false` | Whether the content is shown in a box with a tip that points to the position (a popup). |
 | `onClose` | `() => void` | | Called when the user closes the popup, as the listener `@close`. |
+| `closeButton` | `boolean` | true when `onClose` is set, else false | Whether the popup has a button to close it. |
 | `draggable` | `boolean` | `false` | Whether the user can drag the content. |
 <!-- ref:VueMapOverlayProps:end -->
 
