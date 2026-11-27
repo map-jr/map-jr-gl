@@ -391,6 +391,8 @@ prints in quotes, and a number without. The section of each code gives the names
 in both builds. The server renderer (\`@map-jr/map-jr-gl/server\`) and the standalone files print the full
 text.
 
+Each section starts with tags for the kind of the message (\`Error\` or \`Warning\`), for its entry, and for \`Development build only\` where the message exists only in the development build.
+
 An error of the library that has a code in its message also carries the code in its field \`code\`, such as
 \`error.code === 'E63'\`. The field is set when the error is thrown, when a promise rejects with it, and in the
 \`event.error\` of an \`error\` event.
