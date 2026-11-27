@@ -495,7 +495,7 @@ export async function renderFirstView(o: FirstViewOptions): Promise<FirstViewRes
     const credits = raw === false ? [] : raw.map(cleanCredits).filter(Boolean);
     const light = 'background:rgba(255,255,255,.75);color:#333', dark = 'background:rgba(30,30,30,.75);color:#ccc';
     const colors = o.colorScheme === 'dark' ? dark : o.colorScheme === 'auto' ? light + ';color-scheme:light dark;background:light-dark(rgba(255,255,255,.75),rgba(30,30,30,.75));color:light-dark(#333,#ccc)' : light;
-    const box = credits.length ? `<div data-map-jr-ssr="" ${st('c' + (o.colorScheme ?? 'light'), `position:absolute;right:0;bottom:0;${colors};font:11px/1.4 sans-serif;padding:2px 6px`)}>${credits.join(' ')}</div>` : '';
+    const box = credits.length ? `<div data-map-jr-ssr="" ${st(o.colorScheme === 'dark' ? 'cdark' : o.colorScheme === 'auto' ? 'cauto' : 'clight', `position:absolute;right:0;bottom:0;${colors};font:11px/1.4 sans-serif;padding:2px 6px`)}>${credits.join(' ')}</div>` : '';
     return {tiles, html: first() + made.svg + box};
 }
 

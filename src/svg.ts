@@ -292,8 +292,8 @@ export function renderSVG(s: SVGScene): string {
                     pen += a + src.spacing * l.size;
                 });
                 // Rich text: a line is drawn in the size of its largest section (sizes inside a line are not drawn).
-                const own = line.scale && line.scale !== 1 ? ` style="font-size:${num(l.size * line.scale)}px"` : '';
-                body.push(`<text x="${num(x)}" y="${num(y)}"${rot}${own} ${common}>${escapeXML(line.text.replace(/[\uE000-\uF8FF]/g, ''))}</text>`);
+                const own = line.scale && line.scale !== 1 ? common.replace(/^font-size="[^"]*"/, `font-size="${num(l.size * line.scale)}"`) : common;
+                body.push(`<text x="${num(x)}" y="${num(y)}"${rot} ${own}>${escapeXML(line.text.replace(/[\uE000-\uF8FF]/g, ''))}</text>`);
             });
         }
         body.push('</g>');

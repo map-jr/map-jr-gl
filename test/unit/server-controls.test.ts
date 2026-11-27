@@ -103,6 +103,16 @@ test('renderFirstView with a nonce has no style attribute, so that style-src \'n
         assert.match(html, /<style data-map-jr-ssr="" nonce="n1">/);
         assert.match(html, /\.map-jr-ssr-w\{position:absolute;inset:0;overflow:hidden\}/);
     }
+    // A colorScheme that is not one of the three is not written into the markup.
+    const odd = (await renderFirstView({...view, colorScheme: 'x"><img src=x onerror=alert(1)>' as any})).html;
+    assert.doesNotMatch(odd, /<img/);
+    assert.doesNotMatch(odd, /\sstyle=/);
+    // Rich text with font-scale uses a font-size attribute.
+    const rich = {version: 8, glyphs: 'http://localhost/{fontstack}/{range}.pbf', sources: {s: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}},
+        layers: [{id: 'l', type: 'symbol', source: 's', layout: {'text-field': ['format', 'Big', {'font-scale': 2}], 'text-size': 16}}]};
+    const text = (await renderFirstView({...view, style: rich as any})).html;
+    assert.match(text, /<text [^>]*font-size="32"/);
+    assert.doesNotMatch(text, /\sstyle=/);
     // Without a nonce the sizes stay in style attributes, as before.
     assert.match((await renderFirstView({...view, nonce: undefined})).html, /<svg[^>]* style="position:absolute;left:50%/);
 });
