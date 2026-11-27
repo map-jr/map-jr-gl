@@ -18,13 +18,13 @@ const id = {z, x: tx, y: ty, w: 0, key: `${z}/${tx}/${ty}`};
 const line = {type: 'LineString', coordinates: [[lngOf(tx + 0.1), latOf(ty + 0.1)], [lngOf(tx + 0.9), latOf(ty + 0.9)]]};
 
 /** The boxes that the icons of 20 by 10 pixels along the line put in the grid, with `layout` added to the layer. */
-function iconBoxes(layout: Record<string, unknown>, bearing = 0): number[][] {
+function iconBoxes(layout: Record<string, unknown>, bearing = 0, pitch = 0): number[][] {
     const layer = compileLayer({id: 'r', type: 'symbol', source: 'g', layout: {'icon-image': 'a', 'icon-padding': 2, 'symbol-placement': 'line', 'symbol-spacing': 100, ...layout}})!;
     const data = sliceGeoJSON(prepareGeoJSON({type: 'Feature', properties: {}, geometry: line} as any), z, tx, ty);
     const labels = buildTile(data, z, [layer], false).labels;
     const tr = new Transform();
     tr.width = 800; tr.height = 600;
-    tr.set([lngOf(tx + 0.5), latOf(ty + 0.5)], z, bearing, 0);
+    tr.set([lngOf(tx + 0.5), latOf(ty + 0.5)], z, bearing, pitch);
     const boxes: number[][] = [];
     const grid = new CollisionGrid(), insert = grid.insert.bind(grid);
     grid.insert = (...b: [number, number, number, number]) => { boxes.push(b); return insert(...b); };
@@ -47,6 +47,21 @@ test('the box of an icon along a line turns with icon-rotate and the bearing, as
     for (const b of iconBoxes({'icon-rotate': 45})) near(size(b), [side, side]);
     // At bearing 45 that square is turned by the bearing again, as `text-rotation-alignment` is `map` along a line (#2037).
     for (const b of iconBoxes({'icon-rotate': 45}, 45)) near(size(b), [38, 38]);
+});
+
+test('the box of an icon along a line lies on the ground at pitch when the text does, as in MapLibre GL JS (#2461)', () => {
+    // MapLibre GL JS projects the box of every icon with `text-pitch-alignment`, which is `map` along a line, also when
+    // `icon-rotation-alignment: viewport` stands the icon up: at pitch 60 the box of 24 by 14 pixels is about half as tall.
+    for (const b of iconBoxes({'icon-rotation-alignment': 'viewport'}, 0, 60)) assert.ok(size(b)[1] < 10, `${size(b)}`);
+    // With `text-pitch-alignment: viewport` the box stays on the screen.
+    for (const b of iconBoxes({'icon-rotation-alignment': 'viewport', 'text-pitch-alignment': 'viewport'}, 0, 60)) assert.ok(size(b)[1] > 13, `${size(b)}`);
+    // At pitch 0 the box on the ground is the box at a point: 26 by 10 pixels with 6 pixels of padding on the right,
+    // turned by `icon-rotate` 30 and then by the bearing 40, as `text-rotation-alignment` is `map` along a line (#2037).
+    const r = Math.PI / 6, t = 40 * Math.PI / 180, w = 26 * Math.cos(r) + 10 * Math.sin(r), h = 26 * Math.sin(r) + 10 * Math.cos(r);
+    const want = [w * Math.cos(t) + h * Math.sin(t), w * Math.sin(t) + h * Math.cos(t)];
+    for (const b of iconBoxes({'icon-rotation-alignment': 'viewport', 'icon-rotate': 30, 'icon-padding': [0, 6, 0, 0]}, 40)) {
+        assert.ok(size(b).every((v, i) => Math.abs(v - want[i]) < 0.05), `${size(b)} is not ${want}`);
+    }
 });
 
 test('the icons of a long line with a small symbol-spacing are placed every spacing, as in MapLibre GL JS (#1774)', () => {
