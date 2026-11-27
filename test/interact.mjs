@@ -490,6 +490,25 @@ for (const mode of renderers) {
             check(`[${mode}] ${second} during an easeTo fires moveend and movestart inside the call, as in MapLibre GL JS (#2392)`,
                 ours === ml && ml.startsWith('|call2 moveend movestart |ret2'), JSON.stringify({ours, ml}));
         }
+        // easeTo with `around` and no duration is a jump: one move, all events inside the call, and the same view as MapLibre GL JS (#2394).
+        const aroundJump = lib => page.evaluate(async ([lib, renderer]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const log = [];
+            for (const t of ['movestart', 'zoomstart', 'move', 'zoom', 'zoomend', 'moveend']) m.on(t, () => log.push(t));
+            // (MapLibre GL JS reads `around` as a position, and this entry reads a point of the screen in CSS pixels.)
+            m.easeTo({zoom: 5, duration: 0, around: lib === 'ml' ? m.unproject([100, 100]) : [100, 100]});
+            const sync = log.join(' '), c = m.getCenter(), z = m.getZoom();
+            await new Promise(r => setTimeout(r, 800));
+            m.remove(); el.remove();
+            return sync + ' ' + JSON.stringify([z, +c.lng.toFixed(3), +c.lat.toFixed(3)]) + ' ' + log.length;
+        }, [lib, mode]).catch(e => String(e));
+        const aroundOurs = await aroundJump('ours'), aroundMl = await aroundJump('ml');
+        check(`[${mode}] easeTo with around and duration 0 fires its events once, inside the call, as in MapLibre GL JS (#2394)`,
+            aroundOurs === aroundMl && aroundMl.startsWith('movestart zoomstart move zoom zoomend moveend [') && aroundMl.endsWith(' 6'), JSON.stringify({aroundOurs, aroundMl}));
         // A drag pan on a flat map: a marker stays on its point in every frame (the pan reaches the camera with the move,
         // #479), and the events come in the order of MapLibre GL JS: movestart, dragstart, then move before each drag.
         const flatDrag = await page.evaluate(async renderer => {
