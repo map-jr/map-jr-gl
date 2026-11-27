@@ -220,7 +220,7 @@ for (const mode of renderers) {
     // A transition of `text-translate` and of `icon-translate` moves the text and the icon of a label in each frame, with no
     // camera move, as MapLibre GL JS draws them (#2478): before, both stayed where the last placement had put them. The text
     // is white and the icon green; each is found by the mean row of its pixels, and a sample between start and end must exist.
-    const translated = await (async () => {
+    const movedLabels = await (async () => {
         const wait = ms => new Promise(r => setTimeout(r, ms));
         const rows = async () => page.evaluate(async png => {
             const bmp = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
@@ -256,7 +256,7 @@ for (const mode of renderers) {
         return out;
     })().catch(e => ({error: String(e)}));
     check(`[${mode}] paint transitions: text-translate and icon-translate move a label over their transition with no camera move (#2478)`,
-        translated.start?.every(v => v !== null) && translated.middle.every(Boolean) && translated.end.every((v, k) => Math.abs(v - translated.start[k] - 100) <= 2), JSON.stringify(translated));
+        movedLabels.start?.every(v => v !== null) && movedLabels.middle.every(Boolean) && movedLabels.end.every((v, k) => Math.abs(v - movedLabels.start[k] - 100) <= 2), JSON.stringify(movedLabels));
 
     // The array of queryRenderedFeatures that is read without `await` keeps its features after a change of the style that
     // does not change tile data (setPaintProperty, setStyle with a diff), as in MapLibre GL JS (#817).
