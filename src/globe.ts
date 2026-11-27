@@ -91,12 +91,13 @@ export const hidden = (tr: Transform, mx: number, my: number, slack = 0) => side
 /**
  * The bounds of what the globe shows [west, south, east, north], as MapLibre GL JS gives them: points along the
  * edges of the screen (a point off the globe gives the nearest point of the horizon, so the visible edge of the globe
- * is in), measured from the center; a pole in view makes the bounds reach it, with all longitudes.
+ * is in), measured from the center; a pole in view makes the bounds reach it, with all longitudes. With `box` (left,
+ * top, right, bottom in pixels) the bounds are those of that rectangle of the screen, for the tiles of a query (#2446).
  */
-export function bounds(tr: Transform): [number, number, number, number] {
+export function bounds(tr: Transform, [x0, y0, x1, y1] = [0, 0, tr.width, tr.height]): [number, number, number, number] {
     const f = frame(tr), w = tr.width, h = tr.height, N = 16;
-    let west = 0, east = 0, south = 90, north = -90;
-    for (let i = 0; i <= N; i++) for (const [px, py] of [[w * i / N, 0], [w * i / N, h], [0, h * i / N], [w, h * i / N]]) {
+    let west = Infinity, east = -Infinity, south = 90, north = -90;
+    for (let i = 0; i <= N; i++) for (const [px, py] of [[x0 + (x1 - x0) * i / N, y0], [x0 + (x1 - x0) * i / N, y1], [x0, y0 + (y1 - y0) * i / N], [x1, y0 + (y1 - y0) * i / N]]) {
         const [mx, my] = toMerc(tr, px, py), lat = latFromMerc(my), d = ((lngFromMerc(mx) - tr.lng) % 360 + 540) % 360 - 180;
         west = Math.min(west, d); east = Math.max(east, d); south = Math.min(south, lat); north = Math.max(north, lat);
     }
@@ -104,7 +105,7 @@ export function bounds(tr: Transform): [number, number, number, number] {
         const p = [0, pole, 0], c = clipOf(f, p);
         if (dot(p, f.horizon) + f.horizon[3] < 0 || c[2] <= 0) continue;
         const x = (c[0] / c[2] + 1) / 2 * w, y = (1 - c[1] / c[2]) / 2 * h;
-        if (x < 0 || x > w || y < 0 || y > h) continue;
+        if (x < x0 || x > x1 || y < y0 || y > y1) continue;
         if (pole > 0) north = 90; else south = -90;
         west = -180 - tr.lng; east = 180 - tr.lng;
     }

@@ -304,6 +304,9 @@ export function circleCenters(g: GeoJSONGeometry): number[][] {
  */
 export function tilesUnderBox(tr: Transform, box: number[], minzoom: number, maxzoom: number, /** The tiles are chosen under the rectangle grown by this many pixels. */ pad = 0) {
     const span = ([x0, y0, x1, y1]: number[]) => {
+        // (On the globe a corner can be off the sphere, at the horizon, and the middle of a side can show a place past
+        // the corners: the rectangle is the one around points along its sides, and a pole in it, as `bounds` gives it: #2446.)
+        if (tr.globeness) { const [w, s, e, n] = tr.globe!.bounds(tr, [x0, y0, x1, y1]); return [mercX(w), mercX(e), clamp(mercY(n), 0, 1), clamp(mercY(s), 0, 1)]; }
         const c = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => { const [lng, lat] = tr.unproject(x, y); return [mercX(lng), clamp(mercY(lat), 0, 1)]; });
         return [Math.min(...c.map(p => p[0])), Math.max(...c.map(p => p[0])), Math.min(...c.map(p => p[1])), Math.max(...c.map(p => p[1]))];
     };
