@@ -1,7 +1,7 @@
 import {decodePixels, type ImageDecoder} from './exact-pixels.ts';
 import {EXTENT} from './geo.ts';
 import {warnOnce} from './expr.ts';
-import {decodeElevation, type DemEncoding} from './query.ts';
+import {decodeElevation, type DemEncoding} from './elevation.ts';
 import type {TileLayers} from './tile.ts';
 
 /**
