@@ -34,7 +34,7 @@ export interface MapJrProps extends Omit<MapDescription, 'style' | 'onViewChange
     /** Called with each error of the map. Without it, the map writes each error to the console. */
     onError?: (error: Error, info: MapErrorInfo) => void;
     /**
-     * The first view rendered on a server, as HTML: the result of `renderFirstView` from `@map-jr/map-jr-gl/server`. The
+     * The first view rendered on a server, as HTML: `html` of the result of `renderFirstView` from `@map-jr/map-jr-gl/server`. The
      * page shows it until the map has rendered. Read only on the first render.
      */
     firstView?: string;

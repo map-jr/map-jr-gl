@@ -1,7 +1,0 @@
-{
-  "label": "line-dasharray: some dashed lines are drawn solid (slant, overscaled)",
-  "decision": "later",
-  "issue": 1806,
-  "reason": "line-dasharray: some dashed lines are drawn solid (slant, overscaled).",
-  "pattern": "^(line-dasharray/overscaled|line-dasharray/slant)$"
-}

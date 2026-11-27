@@ -217,6 +217,47 @@ for (const mode of renderers) {
         layerTransitions.start?.max < 60 && layerTransitions.middle?.max > 80 && layerTransitions.middle.max < 235 && layerTransitions.end.max > 240
         && layerTransitions.middle.n > layerTransitions.start.n + 100 && layerTransitions.end.n > layerTransitions.middle.n + 100, JSON.stringify(layerTransitions));
 
+    // A transition of `text-translate` and of `icon-translate` moves the text and the icon of a label in each frame, with no
+    // camera move, as MapLibre GL JS draws them (#2478): before, both stayed where the last placement had put them. The text
+    // is white and the icon green; each is found by the mean row of its pixels, and a sample between start and end must exist.
+    const movedLabels = await (async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const rows = async () => page.evaluate(async png => {
+            const bmp = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+            c.drawImage(bmp, 0, 0);
+            const d = c.getImageData(0, 0, bmp.width, bmp.height).data, s = [0, 0], n = [0, 0];
+            for (let i = 0; i < d.length; i += 4) { const k = d[i] > 128 ? 0 : d[i + 1] > 128 ? 1 : -1; if (k >= 0) { s[k] += Math.floor(i / 4 / bmp.width); n[k]++; } }
+            return s.map((v, k) => n[k] ? Math.round(v / n[k]) : null);
+        }, (await page.screenshot({clip: {x: 0, y: 0, width: 300, height: 300}})).toString('base64'));
+        await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), style = await (await fetch('/style.json')).json();
+            const el = window.translateEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:300px;z-index:99999'}));
+            const font = style.layers.find(l => l.layout?.['text-font'])?.layout['text-font'], move = {duration: 2000, delay: 0};
+            const m = window.translateMap = new mod.Map({container: el, renderer, center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8, glyphs: style.glyphs,
+                sources: {p: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#000'}},
+                    {id: 't', type: 'symbol', source: 'p', layout: {'text-field': 'WWW', 'text-font': font, 'text-size': 24, 'text-offset': [0, -2], 'icon-image': 'g', 'text-allow-overlap': true, 'icon-allow-overlap': true},
+                        paint: {'text-color': '#fff', 'text-translate-transition': move, 'icon-translate-transition': move}}]}});
+            m.addImage('g', {width: 16, height: 16, data: new Uint8Array(16 * 16 * 4).map((_, i) => i % 4 === 1 || i % 4 === 3 ? 255 : 0)});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+        }, mode);
+        await wait(300);
+        const out = {start: await rows(), middle: [false, false]};
+        await page.evaluate(() => { const m = window.translateMap; window.translateIdled = false; m.once('idle', () => window.translateIdled = true); m.setPaintProperty('t', 'text-translate', [0, 100]); m.setPaintProperty('t', 'icon-translate', [0, 100]); });
+        while (!await page.evaluate(() => window.translateIdled) && !out.middle.every(Boolean)) {
+            const r = await rows();
+            out.middle = out.middle.map((was, k) => was || r[k] > out.start[k] + 20 && r[k] < out.start[k] + 80);
+            await wait(50);
+        }
+        await page.waitForFunction(() => window.translateIdled, null, {timeout: 30000});
+        await wait(200);
+        out.end = await rows();
+        await page.evaluate(() => { window.translateMap.remove(); window.translateEl.remove(); });
+        return out;
+    })().catch(e => ({error: String(e)}));
+    check(`[${mode}] paint transitions: text-translate and icon-translate move a label over their transition with no camera move (#2478)`,
+        movedLabels.start?.every(v => v !== null) && movedLabels.middle.every(Boolean) && movedLabels.end.every((v, k) => Math.abs(v - movedLabels.start[k] - 100) <= 2), JSON.stringify(movedLabels));
+
     // The array of queryRenderedFeatures that is read without `await` keeps its features after a change of the style that
     // does not change tile data (setPaintProperty, setStyle with a diff), as in MapLibre GL JS (#817).
     {
@@ -247,6 +288,28 @@ for (const mode of renderers) {
         }, mode).catch(e => ({error: String(e)}));
         check(`[${mode}] compat: the array of queryRenderedFeatures keeps its features after setPaintProperty and setStyle with a diff, and after setData of another source (#817)`,
             kept.first > 0 && kept.paint === kept.first && kept.diff === kept.first && kept.before > 0 && kept.filterNow === kept.before && kept.filterIdle === 0 && kept.again === kept.before && kept.otherData === kept.before && kept.refreshed === 0, JSON.stringify(kept));
+    }
+
+    // As in MapLibre GL JS, a layer that is hidden, or whose filter changes, keeps the features it was drawn with for a query
+    // until the tiles have loaded again (idle); then the query answers with the new values (#2364).
+    {
+        const stale = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), style = await (await fetch('/style.json')).json();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:50'}));
+            const m = new mod.Map({container: el, style, center: [10, 45], zoom: 3, renderer, attributionControl: false});
+            const idle = () => new Promise(r => { m.once('idle', r); setTimeout(r, 15000); }), out = {};
+            const id = style.layers.find(l => l.type === 'fill').id, q = async () => (await m.queryRenderedFeatures(undefined, {layers: [id]})).length;
+            await idle(); out.before = await q();
+            m.setLayoutProperty(id, 'visibility', 'none'); out.hiddenNow = await q();
+            await idle(); out.hiddenIdle = await q();
+            m.setLayoutProperty(id, 'visibility', 'visible'); await idle(); out.shown = await q();
+            m.setFilter(id, ['==', ['get', 'no-such-property'], 1]); out.filterNow = await q();
+            await idle(); out.filterIdle = await q();
+            m.remove(); el.remove();
+            return out;
+        }, mode).catch(e => ({error: String(e)}));
+        check(`[${mode}] compat: queryRenderedFeatures after setLayoutProperty visibility and setFilter answers with the old values until idle (#2364)`,
+            stale.before > 0 && stale.hiddenNow === stale.before && stale.hiddenIdle === 0 && stale.shown === stale.before && stale.filterNow === stale.before && stale.filterIdle === 0, JSON.stringify(stale));
     }
 
     // The globe (#463): a map with the projection globe draws a sphere (the corners of the canvas stay empty), places
@@ -395,6 +458,32 @@ for (const mode of renderers) {
             return result;
         }, mode);
         check(`[${mode}] the globe: queryRenderedFeatures finds an icon moved by icon-translate where it is drawn (#1822)`, moved.drawn[1] > 220 && moved.drawn[1] < 245 && moved.atDrawn === 1 && moved.atScreen === 0, JSON.stringify(moved));
+        // A line at 88° N or S is clamped to the edge of the world at 85.05°, and on the globe the tile of the first or the
+        // last row also draws the half of its width that lies in the cap of the pole, as MapLibre GL JS 6.17 does (#2307).
+        // The line was half as wide before (396 pixels of ink, and 797 in MapLibre). On Mercator the edge of the world
+        // still clips it, and a line at 84° is not affected.
+        const poleLine = (lib, proj, lat) => page.evaluate(async ([lib, renderer, proj, lat]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:300px;z-index:60'}));
+            const coords = Array.from({length: 73}, (_, i) => [-180 + i * 5, lat]);
+            const style = {version: 8, projection: {type: proj}, sources: {s: {type: 'geojson', data: {type: 'LineString', coordinates: coords}}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#000'}}, {id: 'l', type: 'line', source: 's', paint: {'line-color': '#fff', 'line-width': 2}}]};
+            const map = new mod.Map({container: el, style, center: [0, Math.sign(lat) * 85], zoom: 2, renderer, attributionControl: false, canvasContextAttributes: {preserveDrawingBuffer: true}});
+            await new Promise(r => { map.once('idle', r); setTimeout(r, 15000); });
+            const blob = lib === 'ml' ? await (await fetch(map.getCanvas().toDataURL())).blob() : await map.toBlob();
+            const bmp = await createImageBitmap(blob), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+            c.drawImage(bmp, 0, 0);
+            const d = c.getImageData(0, 0, bmp.width, bmp.height).data;
+            let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 60) n++;
+            map.remove(); el.remove();
+            return n;
+        }, [lib, mode, proj, lat]).catch(e => String(e));
+        const poleInk = {};
+        for (const [proj, lat] of [['globe', 88], ['globe', -88], ['globe', 84], ['mercator', 88]]) for (const lib of ['ours', 'ml']) poleInk[`${lib} ${proj} ${lat}`] = await poleLine(lib, proj, lat);
+        check(`[${mode}] the globe: a line north of 85.05° N or south of 85.05° S has the width of MapLibre GL JS within 2%, and Mercator clips it at the edge of the world (#2307)`,
+            ['globe 88', 'globe -88', 'globe 84', 'mercator 88'].every(k => poleInk['ml ' + k] > 200 && Math.abs(poleInk['ours ' + k] - poleInk['ml ' + k]) <= poleInk['ml ' + k] * 0.02)
+            && poleInk['ml globe 88'] > poleInk['ml mercator 88'] * 2, JSON.stringify(poleInk));
         // On a pitched Mercator map icon-translate moves the point in tile units, as in MapLibre GL JS: [0, 60] at pitch 60
         // moves the icon about 27 pixels down the screen, not 60 (#2021). The anchor `viewport` does the same.
         const pitched = await page.evaluate(async renderer => {
@@ -558,6 +647,48 @@ for (const mode of renderers) {
             const ours = await easeOrder('ours', second), ml = await easeOrder('ml', second);
             check(`[${mode}] ${second} during an easeTo fires moveend and movestart inside the call, as in MapLibre GL JS (#2392)`,
                 ours === ml && ml.startsWith('|call2 moveend movestart |ret2'), JSON.stringify({ours, ml}));
+        }
+        // An easeTo or flyTo during a drag fires movestart inside the call, and the drag goes on: the ease fires moveend, and
+        // the release fires dragend and a second moveend, as in MapLibre GL JS (#2469). (The zoom events wait for #2474.)
+        const dragEase = (lib, second, early) => page.evaluate(async ([lib, renderer, second, early]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const log = [], c = m.getCanvas(), frame = () => new Promise(r => requestAnimationFrame(() => r()));
+            for (const t of ['movestart', 'dragstart', 'dragend', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            const send = (type, [x, y]) => {
+                const o = {bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse', isPrimary: true, view: window};
+                c.dispatchEvent(lib === 'ml' ? new MouseEvent(type.replace('pointer', 'mouse'), o) : new PointerEvent(type, o));
+            };
+            send('pointerdown', [100, 100]); await frame();
+            for (let i = 1; i < 8; i++) { send('pointermove', [100 + i * 8, 100]); await frame(); }
+            await new Promise(r => setTimeout(r, 200));
+            log.push('|call'); m[second]({center: [30, 55], zoom: 6, duration: early ? 3000 : 300}); log.push('|ret');
+            // (`early`: the pointer lifts while the ease still runs.)
+            // (It waits for the first `move` of the ease, not for a time: the report of the engine can come late. When the ease
+            // has ended by then, the attempt is void and the caller tries again.)
+            if (early) {
+                for (let i = 0; i < 200 && !log.slice(log.indexOf('|call')).includes('move'); i++) await new Promise(r => setTimeout(r, 25));
+                if (log.slice(log.indexOf('|call')).includes('moveend')) { m.remove(); el.remove(); return 'RETRY'; }
+            } else for (let i = 0; i < 100 && !log.slice(log.indexOf('|call')).includes('moveend'); i++) await new Promise(r => setTimeout(r, 50));
+            await new Promise(r => setTimeout(r, 100));
+            send('pointerup', [200, 120]);
+            if (early) for (let i = 0; i < 200 && log.slice(log.indexOf('|call')).filter(t => t === 'moveend').length < 2; i++) await new Promise(r => setTimeout(r, 25));
+            else await new Promise(r => setTimeout(r, 600));
+            m.remove(); el.remove();
+            return log.slice(log.indexOf('|call')).join(' ');
+        }, [lib, mode, second, early]).catch(e => String(e));
+        for (const second of ['easeTo', 'flyTo']) {
+            const ours = await dragEase('ours', second), ml = await dragEase('ml', second);
+            check(`[${mode}] ${second} during a drag fires movestart inside the call and moveend, dragend and moveend after it, as in MapLibre GL JS (#2469)`,
+                ours === ml && ml === '|call movestart |ret move moveend dragend moveend', JSON.stringify({ours, ml}));
+            // The release during the ease fires the `moveend` of the drag, and the ease goes on without a second `movestart`.
+            const attempt = async lib => { let out; for (let i = 0; i < 4 && (i === 0 || out === 'RETRY'); i++) out = await dragEase(lib, second, true); return out; };
+            const earlyOurs = await attempt('ours'), earlyMl = await attempt('ml');
+            check(`[${mode}] ${second} during a drag, released while it runs, fires dragend and moveend and then the rest of the ease with no second movestart, as in MapLibre GL JS (#2469)`,
+                earlyOurs === earlyMl && earlyMl === '|call movestart |ret move dragend moveend move moveend', JSON.stringify({earlyOurs, earlyMl}));
         }
         // resize() fires movestart, move, resize and moveend inside the call, also for an unchanged size, and the observer of
         // the container fires them once more after a change of the size, as in MapLibre GL JS (#2395).
@@ -4111,6 +4242,42 @@ for (const mode of renderers) {
         });
         await pg.close();
         check('[main] compat: on a pitched map a line across a tile edge has each pixel drawn once, with no hole and no pixel drawn twice (#2443)',
+            r.every(v => v.inside > 10000 && !v.holes && !v.twice), JSON.stringify(r));
+    }
+    // #2464: the same for a fill (with its antialiased edges) and a fill-pattern. Three polygons that do not overlap cross
+    // the tile edges of zoom 4 at opacity 0.5, DPR 2. Before the fix the four views had holes and pixels drawn twice.
+    if (mode === 'main') {
+        const pg = await browser.newPage({viewport: {width: 600, height: 400}, deviceScaleFactor: 2});
+        await pg.goto(page.url());
+        const r = await pg.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = [];
+            const features = [0, 1, 2].map(i => [-32 + i * 22, -20 + i * 9]).map(([x, y]) => ({type: 'Feature', properties: {},
+                geometry: {type: 'Polygon', coordinates: [[[x, y], [x + 18, y + 3], [x + 17, y + 25], [x + 2, y + 20], [x, y]]]}}));
+            const black = {width: 8, height: 8, data: new Uint8Array(256).map((_, i) => i % 4 === 3 ? 255 : 0)};
+            for (const paint of [{'fill-color': '#000', 'fill-opacity': 0.5}, {'fill-pattern': 'p', 'fill-opacity': 0.5}]) for (const [pitch, bearing] of [[60, -40], [60, 200], [60, 250], [50, 300]]) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:600px;height:400px'}));
+                const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 4, pitch, bearing, style: {version: 8,
+                    sources: {l: {type: 'geojson', data: {type: 'FeatureCollection', features}}}, layers: [
+                        {id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'l', type: 'fill', source: 'l', paint}]}});
+                m.addImage('p', black);
+                await new Promise(res => { m.once('idle', res); setTimeout(res, 10000); });
+                m.triggerRepaint(); await new Promise(res => m.once('render', res));
+                const cv = m.getCanvas(), w = cv.width, h = cv.height, c = Object.assign(document.createElement('canvas'), {width: w, height: h}).getContext('2d');
+                c.drawImage(cv, 0, 0);
+                const d = c.getImageData(0, 0, w, h).data, g = (x, y) => d[(y * w + x) * 4 + 1], near = v => Math.abs(v - 128) <= 2;
+                let holes = 0, twice = 0, inside = 0;
+                for (let y = 3; y < h - 3; y++) for (let x = 3; x < w - 3; x++) {
+                    if (!(near(g(x - 3, y)) && near(g(x + 3, y)) && near(g(x, y - 3)) && near(g(x, y + 3)))) continue;
+                    inside++;
+                    if (g(x, y) > 148) holes++; else if (g(x, y) < 108) twice++;
+                }
+                out.push({pattern: !!paint['fill-pattern'], pitch, bearing, inside, holes, twice});
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        await pg.close();
+        check('[main] compat: on a pitched map a fill and a fill-pattern across a tile edge have each pixel drawn once, with no hole and no pixel drawn twice (#2464)',
             r.every(v => v.inside > 10000 && !v.holes && !v.twice), JSON.stringify(r));
     }
     // #1450: a removed image source frees its picture and its texture. The probe counts live textures that hold a 3x5

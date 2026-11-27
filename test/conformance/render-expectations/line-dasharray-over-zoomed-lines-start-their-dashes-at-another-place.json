@@ -1,0 +1,7 @@
+{
+  "label": "line-dasharray: the dashes of over-zoomed lines start at another place than in MapLibre",
+  "decision": "later",
+  "issue": 2527,
+  "reason": "line-dasharray: the dashes of over-zoomed lines start at another place than in MapLibre.",
+  "pattern": "^(line-dasharray/overscaled)$"
+}

@@ -1760,13 +1760,17 @@ The layer "<id>": "ref" names "<ref>", which is no layer without "ref". Name suc
 `Production build`
 
 ```text
-[map-jr-gl] E2040 https://map-jr.org/e/2040 id=… type=… maxRuns=…
+[map-jr-gl] E2040 https://map-jr.org/e/2040 id=… type=… maxRuns=… grouped=…
 ```
 
 `Development build`
 
 ```text
-layer "<id>": in the order of "<type>-sort-key", the features of a tile form more than <MAX_RUNS> runs with the same "<type>-pattern", so the key orders the features only within each image. Give the features of one image keys next to each other, or make a layer for each image.
+layer "<id>": in the order of "<type>-sort-key", the features of a tile form more than <MAX_RUNS> runs with the same "line-dasharray", so the key orders the features only within each value. Give the features of one value keys next to each other, or make a layer for each value.
+```
+
+```text
+layer "<id>": in the order of "<type>-sort-key", the features of a tile form more than <MAX_RUNS> runs with the same "<type>-pattern", so the key orders the features only within each value. Give the features of one value keys next to each other, or make a layer for each value.
 ```
 
 ## E2047
@@ -1915,6 +1919,14 @@ interactive: "<gesture>" is not a gesture, so it has no effect. Write one of dra
 
 ```text
 server render: the layer "<layerId>" is not drawn, because the server render does not draw <kind>. The map draws it in the browser. To leave it out of the server render without this warning, set overrides: {"<layerId>": {hidden: true}}.
+```
+
+## E2513
+
+`Warning` `Server renderer`
+
+```text
+server render: the pitch is <pitch>, and the server render draws the first view flat, as if the pitch were 0, until #395. The map in the browser uses the pitch. When that is intended, nothing needs to change.
 ```
 
 ## E10017

@@ -16,7 +16,7 @@ function styleCounts(html: string): number[] {
 
 test('renderFirstView has no element with two style attributes', async () => {
     for (const extra of [{}, {controls: [navigation(), scale()]}, {attribution: false}, {colorScheme: 'dark' as const}, {nonce: 'abc'}]) {
-        const html = await renderFirstView({style, ...view, ...extra} as any);
+        const html = (await renderFirstView({style, ...view, ...extra} as any)).html;
         assert.ok(styleCounts(html).length > 1 && Math.max(...styleCounts(html)) === 1, html.slice(0, 300));
     }
 });

@@ -154,6 +154,10 @@ export class Point {
     _round() { return this.set(Math.round(this.x), Math.round(this.y)); }
 }
 export class Map extends CoreMap {
+    /** As in MapLibre GL JS, a query answers with the old `visibility` and filter of a layer until `idle` (#2364). */
+    protected keepsOldQuery = true;
+    /** The answers that were asked with the old values are dropped, so the next call asks the engine again. */
+    protected staleCleared() { this.forget(); }
     /** As in MapLibre GL JS: with it on, the wheel zooms only with Ctrl (⌘ on a Mac), and one finger scrolls the page. */
     readonly cooperativeGestures = cooperativeGestures(this);
     /**
@@ -863,7 +867,7 @@ export class Map extends CoreMap {
         this.halt();
         return f();
     }
-    protected override easeStarted() { if (!this.gesturing?.()) this.begin(); }
+    protected override easeStarted() { if (!this.gesturing?.()) this.begin(); else this.beginDuringDrag(); }
     /**
      * Moves the camera to fit a box, as in MapLibre GL JS: it flies there as `flyTo` does, or eases there as `easeTo` does when `o` sets `linear`.
      * The zoom fits the box as seen from above, turned by `bearing`. As in MapLibre GL JS, `offset` moves the fitted view and then the move, so it counts twice. The other options of `o` (`pitch`, `duration`, `speed`, `curve`, `essential` and the rest) go to that move.

@@ -63,6 +63,7 @@ that get their view later, and for an `interface` that adds members: an `interfa
 | `center` | `LngLatLike` | | The center of the view, `[lng, lat]`. |
 | `zoom` | `number` | | The zoom level of the view. |
 | `bearing` | `number` | `0` | The bearing of the view in degrees. |
+| `pitch` | `number` | `0` | Has no effect, because the server render draws every view flat. |
 | [`bounds`](#bounds-and-padding) | `LngLatBoundsInput` | | A box `[west, south, east, north]` to fit into the view. |
 | [`padding`](#bounds-and-padding) | `PaddingInput` | `0` | Space in CSS pixels around `bounds` for the fit: one number, or `{top, right, bottom, left}`. |
 | `fitMaxZoom` | `number \| null` | `maxZoom` of `renderFirstView`, else 22 | The highest zoom of the fit to `bounds`, as `initialView.fitMaxZoom` of the description. |
@@ -247,7 +248,7 @@ everything when it takes over in the browser.
 
 | Not drawn | What the render shows |
 |---|---|
-| Pitch | The view from straight above. |
+| Pitch | The view from straight above. A `pitch` other than 0 in the options or in the view of the description writes one warning (`E2513`) for each process. |
 | `hillshade`, `color-relief` and `heatmap` layers | Nothing for that layer. |
 | Lines with a `line-gap-width` above 0 | Nothing for that layer. |
 | 3D terrain | The layers on flat ground. |
@@ -263,10 +264,10 @@ its id from `layerFilter`.
 ## `renderFirstView`
 
 ```ts
-renderFirstView(options: FirstViewOptions): Promise<string>
+renderFirstView(options: FirstViewOptions): Promise<FirstViewResult>
 ```
 
-Returns the HTML of the first view of a map: the SVG of `renderToSVG`, and the attribution in a box at the bottom
+Returns an object with `html` and `tiles` (see [`FirstViewResult`](#firstviewresult)). `html` is the first view of a map: the SVG of `renderToSVG`, and the attribution in a box at the bottom
 right. With `controls`, it also returns the controls of the map and their style sheet. Put the HTML into the
 element of the map, which needs a `position` that is not `static`.
 
@@ -280,6 +281,13 @@ The SVG is in a box with `position: absolute; inset: 0; overflow: hidden`, and b
   bounds to an element of the shape of the render.
 
 The guide [Server rendering](../guide/server-rendering.md) shows the cases.
+
+### `FirstViewResult`
+
+| Name | Type | Description |
+|---|---|---|
+| `html` | `string` | The HTML of the first view, for the element of the map. |
+| `tiles` | `string[]` | The URLs of the tiles of the view, as `tiles` of [`RenderResult`](#renderresult). Write them as `<link rel="preload" as="fetch" crossorigin>` so that the browser loads them early. |
 
 | Name | Type | Default | Description |
 |---|---|---|---|
@@ -499,5 +507,5 @@ The render uses the props `map-style`, `initial-view`, `view`, `sources`, `layer
 `images`, `font-family`, `color-scheme`, `global-state`, `controls`, `locale`, `nonce`, `min-zoom`, `max-zoom`,
 `projection` and `attribution`, including `fitPadding` and `fitMaxZoom` of `initial-view`.
 
-The React component of `@map-jr/map-jr-gl/react` has the prop `firstView`: the HTML of `renderFirstView`. The
+The React component of `@map-jr/map-jr-gl/react` has the prop `firstView`: `html` of the result of `renderFirstView`. The
 component reads it in its first render only.

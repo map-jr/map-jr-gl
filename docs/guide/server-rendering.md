@@ -34,10 +34,13 @@ embed them as data instead, for an SVG that is opened as a file or shown with an
 
 ## Show the first view before the script runs
 
-[`renderFirstView`](../reference/server.md#renderfirstview) returns HTML for the element of the map: the SVG, and the
-attribution over it. The page shows this HTML at once. The map then starts in the same element, and it removes the
-HTML when it has loaded the tiles of its first view. With the option `controls`, the HTML also has the controls of
-the map, so that they are on the page from the first paint (see [Controls in the first view](#controls-in-the-first-view)).
+[`renderFirstView`](../reference/server.md#renderfirstview) returns an object. Its `html` is HTML for the element of the
+map: the SVG, and the attribution over it. Its `tiles` are the URLs of the tiles of the view (see
+[Load the tiles while the script loads](#load-the-tiles-while-the-script-loads)).
+
+The page shows the HTML at once. The map then starts in the same element, and it removes the HTML when it has loaded
+the tiles of its first view. With the option `controls`, the HTML also has the controls of the map, so that they are
+on the page from the first paint (see [Controls in the first view](#controls-in-the-first-view)).
 
 **Map Jr**
 
@@ -52,18 +55,24 @@ const lib = 'https://unpkg.com/@map-jr/map-jr-gl@0.11.0/dist/map-jr-gl.js';
 export async function page() {
   // A failed render must not fail the page: the map then draws in the
   // browser.
-  const firstView = await renderFirstView({
+  const {html, tiles} = await renderFirstView({
     style,
     ...view,
     width: 800,
     height: 500,
   }).catch(error => {
     console.error(error.message);
-    return '';
+    return {html: '', tiles: []};
   });
+  const preload = tiles
+    .map(url => `<link rel="preload" as="fetch" crossorigin href="${url}">`)
+    .join('\n');
   return `<!doctype html>
+<head>
+${preload}
+</head>
 <div id="map"
-  style="position: relative; width: 800px; height: 500px">${firstView}</div>
+  style="position: relative; width: 800px; height: 500px">${html}</div>
 <script type="module">
   import {createMap} from '${lib}';
   createMap('map', ${JSON.stringify({style, initialView: view})});
@@ -130,7 +139,7 @@ export async function page() {
 }
 ```
 
-With React, call `renderFirstView` on the server and pass the HTML to the `firstView` prop of `<MapJr>`. The
+With React, call `renderFirstView` on the server and pass its `html` to the `firstView` prop of `<MapJr>`. The
 built files of `@map-jr/map-jr-gl/react` start with `'use client'`, so a server component of Next.js imports `MapJr`
 from the entry and needs no client file of its own:
 
@@ -145,9 +154,9 @@ const initialView = {center: [-74.0065, 40.7085], zoom: 13.6};
 export default async function Page() {
   // The description of the map: the same fields as the props of MapJr.
   const description = {style, initialView};
-  const firstView = await renderFirstView(firstViewOptions(description)).catch(
-    () => '',
-  );
+  const {html: firstView} = await renderFirstView(
+    firstViewOptions(description),
+  ).catch(() => ({html: '', tiles: []}));
   return (
     <div style={{height: 500}}>
       <MapJr mapStyle={style} initialView={initialView} firstView={firstView} />
@@ -160,7 +169,7 @@ export default async function Page() {
 `renderFirstView`, so that the page does not copy the fields by hand. It takes the size from its second argument
 (`{width: 800, height: 500}` when not set).
 
-The adapter for Svelte has no server rendering. Put the HTML of `renderFirstView` into the element of the map
+The adapter for Svelte has no server rendering. Put the `html` of `renderFirstView` into the element of the map
 (`{@html firstView}`), as in the main API. Make its options with `firstViewOptions(description)` from the same
 description that the page passes to `mapJr`.
 
@@ -206,7 +215,7 @@ markup and its style sheet together with the SVG, and shows its own controls in 
 import {renderFirstView} from '@map-jr/map-jr-gl/server';
 import {navigation, scale} from '@map-jr/map-jr-gl/controls';
 
-const firstView = await renderFirstView({
+const {html} = await renderFirstView({
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   center: [-74.0065, 40.7085],
   zoom: 13.6,
@@ -244,14 +253,14 @@ the controls of a map of that entry.
 
 ## Load the tiles while the script loads
 
-The `tiles` of the result of `renderToSVG` are the vector tile URLs that the live map requests for the same view.
-Write a preload link for each one into the head of the page, and the browser loads the tiles at the same time as
-the script:
+The `tiles` of the result of `renderFirstView` and of `renderToSVG` are the vector tile URLs that the live map requests
+for the same view. Write a preload link for each one into the head of the page, and the browser loads the tiles at the
+same time as the script:
 
 ```js
-import {renderToSVG} from '@map-jr/map-jr-gl/server';
+import {renderFirstView} from '@map-jr/map-jr-gl/server';
 
-const {svg, tiles} = await renderToSVG({
+const {html, tiles} = await renderFirstView({
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   center: [-74.0065, 40.7085],
   zoom: 13.6,
@@ -263,8 +272,8 @@ const head = tiles
   .join('\n');
 ```
 
-`renderFirstView` does not return the tile URLs. To have both, call `renderToSVG` and write the attribution of its
-result into the page yourself.
+`renderToSVG` returns the same `tiles`, with the SVG and the attribution as separate values, for a page that places
+them itself.
 
 ## Handle a render that fails
 
@@ -283,7 +292,7 @@ Vue component, set it in the `ssr` prop: `:ssr="{timeout: 3000}"`.
 ```js
 import {renderFirstView} from '@map-jr/map-jr-gl/server';
 
-const firstView = await renderFirstView({
+const {html, tiles} = await renderFirstView({
   style: 'https://styles.map-jr.org/1/elevation-zero.json',
   center: [-74.0065, 40.7085],
   zoom: 13.6,
@@ -292,7 +301,7 @@ const firstView = await renderFirstView({
   timeout: 3000,
 }).catch(error => {
   console.warn(error.message);
-  return '';
+  return {html: '', tiles: []};
 });
 ```
 

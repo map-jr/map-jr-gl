@@ -40,7 +40,7 @@ const pins = {data: {pins: {type: 'FeatureCollection', features: [{type: 'Featur
 for (const f of ['react.js', 'react.dev.js']) check(`dist/${f} starts with 'use client'`, readFileSync(path.join(root, 'dist', f), 'utf8').startsWith(`'use client';\n`));
 
 // 1. On the server: the first view from the server entry, given to the component.
-const firstView = await renderFirstView({style, ...view, width: 800, height: 500, images: {disc}, ...pins, overrides: {building: {hidden: true}}});
+const firstView = (await renderFirstView({style, ...view, width: 800, height: 500, images: {disc}, ...pins, overrides: {building: {hidden: true}}})).html;
 const frame = child => h('div', {id: 'frame', style: {width: 800, height: 500}}, child);
 const html = renderToString(frame(h(MapJr, {mapStyle: style, initialView: view, images: {disc}, ...pins, firstView})));
 check('server: the component renders the first view, with the marker from its image (a template with the colour of the marker)', /<svg[^>]*data-map-jr-ssr/.test(html) && html.includes('Example tiles') && html.includes('map-jr-react') && /<circle cx="12" cy="12" r="10" fill="#d00"/.test(html), `${(html.length / 1024).toFixed(0)} KB of HTML`);

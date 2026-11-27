@@ -69,19 +69,26 @@ async function pictureStyle(given: unknown, server: boolean, transform: ((s: Sty
 }
 const sheets = new WeakMap<Document, CSSStyleSheet>();
 
-/** Adds the style sheet of the control to the root node of the map: a constructed sheet is not subject to `style-src`. */
-function addSheet(el: HTMLElement, nonce?: string | null) {
-    const root = el.getRootNode() as Document | ShadowRoot, doc = el.ownerDocument;
-    try {
+/**
+ * Adds the style sheet of the control to the root node of the container of the map (the document or a shadow root): a
+ * constructed sheet is not subject to `style-src`. The element of the control is still detached here, so the container gives the root (#2512).
+ */
+function addSheet(container: HTMLElement, nonce?: string | null) {
+    const node = container.getRootNode() as Document | ShadowRoot, doc = container.ownerDocument;
+    const root = node.nodeType === 9 || (node as ShadowRoot).host ? node : doc;
+    if (root.adoptedStyleSheets) try {
         let sheet = sheets.get(doc);
         if (!sheet) { sheet = new doc.defaultView!.CSSStyleSheet(); sheet.replaceSync(CSS); sheets.set(doc, sheet); }
         if (!root.adoptedStyleSheets.includes(sheet)) root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
-    } catch {
-        if (doc.getElementById('map-jr-styles-css')) return;
-        const s = Object.assign(doc.createElement('style'), {id: 'map-jr-styles-css', textContent: CSS});
-        if (nonce) s.nonce = nonce;
-        doc.head.appendChild(s);
-    }
+        return;
+    } catch { /* a browser without constructable style sheets uses a <style> element */ }
+    // A sheet that `style-src` blocked has no `sheet`: a map with another `nonce` replaces it (#2435).
+    const old = root.getElementById('map-jr-styles-css') as HTMLStyleElement | null;
+    if (old && (old.sheet || !nonce || old.nonce === nonce)) return;
+    old?.remove();
+    const s = Object.assign(doc.createElement('style'), {id: 'map-jr-styles-css', textContent: CSS});
+    if (nonce) s.nonce = nonce;
+    ((root as Document).head ?? root).appendChild(s);
 }
 
 const sameStyle = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
@@ -177,7 +184,7 @@ export class StylesControl implements Control {
             add(pair, entry, ui(map, 'StylesControl.Light', 'Light'), 'light');
             add(pair, entry, ui(map, 'StylesControl.Dark', 'Dark'), 'dark');
         }
-        addSheet(el, instance.description.nonce);
+        addSheet(map.getContainer(), instance.description.nonce);
         const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && !list.hidden) { e.stopPropagation(); this.close(true); } };
         const outside = (e: PointerEvent) => { if (!list.hidden && !el.contains(e.target as Node)) this.close(false); };
         el.addEventListener('keydown', key);

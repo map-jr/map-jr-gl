@@ -58,6 +58,11 @@ export interface RenderOptionsBase {
      * @default 0
      */
     bearing?: number;
+    /**
+     * Has no effect, because the server render draws every view flat. A value other than 0 writes a warning.
+     * @default 0
+     */
+    pitch?: number;
     /** A box `[west, south, east, north]` to fit into the view. It overrides `center` and `zoom`. */
     bounds?: LngLatBoundsInput;
     /**
@@ -252,11 +257,15 @@ function fitBounds(bounds: LngLatBoundsInput, padding: PaddingInput | undefined,
     return fitBox(b.length > 2 ? b as number[] : [...toLngLat(b[0] as LngLatLike), ...toLngLat(b[1] as LngLatLike)], width, height, p, p, maxZoom);
 }
 
+// The warning about `pitch` is shown once per process; it holds no state of a map.
+let warnedPitch = false;
+
 /** `renderToSVG`, with the view that the SVG shows (`renderFirstView` needs it for the scale and the compass). */
 async function renderView(o: RenderOptions, rootAttrs = 'data-map-jr-ssr="" style="position:absolute;inset:0;width:100%;height:100%"'): Promise<RenderResult & {view: {lat: number; zoom: number; bearing: number}}> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     // Without a view, the render would be at an undefined center and zoom, with no message (#1640).
     if (!o.bounds && (o.center == null || o.zoom == null)) throw new Error(`[map-jr-gl] ${o.center == null && o.zoom == null ? 'E1640 server render: the options have no "center" and no "zoom"' : o.center == null ? 'E11640 server render: the options have "zoom" but no "center"' : 'E21640 server render: the options have "center" but no "zoom"'}, and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".`);
+    if (o.pitch && !warnedPitch) { warnedPitch = true; console.warn(`[map-jr-gl] E2513 server render: the pitch is ${o.pitch}, and the server render draws the first view flat, as if the pitch were 0, until #395. The map in the browser uses the pitch. When that is intended, nothing needs to change.`); }
     // The size is written into the markup as it is: a string could add attributes, and NaN gives a size of NaN (#1668).
     for (const name of ['width', 'height'] as const) {
         const size: unknown = o[name];
@@ -442,6 +451,14 @@ export interface FirstViewOptionsBase extends RenderOptionsBase {
     attributionOptions?: AttributionOptions | null;
 }
 
+/** The result of `renderFirstView`. */
+export interface FirstViewResult {
+    /** The HTML of the first view: put it into the element of the map. */
+    html: string;
+    /** The URLs of the tiles of the view, as `tiles` of `RenderResult`. Write them as `<link rel="preload" as="fetch" crossorigin>` so that the browser loads them early. */
+    tiles: string[];
+}
+
 /**
  * Renders the first view of a map as HTML for a page from a server: the SVG, with the credits over it. Put the HTML into
  * the element of the map; the map removes it when it has loaded the tiles of its first view, just before `load`.
@@ -449,9 +466,9 @@ export interface FirstViewOptionsBase extends RenderOptionsBase {
  * sheet, in the positions and the look that the map gives them, so that the map takes over with no visible change.
  * @param o The options of `renderToSVG`. `attribution` sets the credits instead of those of the sources, and `false` shows none.
  * `colorScheme` sets the colors of the credits and the controls; `'auto'` follows the browser.
- * @returns A promise of the HTML. It rejects as `renderToSVG` does.
+ * @returns A promise of the HTML and the URLs of the tiles. It rejects as `renderToSVG` does.
  */
-export async function renderFirstView(o: FirstViewOptions): Promise<string> {
+export async function renderFirstView(o: FirstViewOptions): Promise<FirstViewResult> {
     // The map keeps the center and the zoom at any size of the element, so the picture is drawn at 1:1, centered and cropped
     // by a box of the element's size. An element that is wider or higher than the render is covered: the picture is scaled
     // up as little as covers it, and is not letterboxed (#1427). With `bounds` the map fits them to the element, so the
@@ -459,18 +476,19 @@ export async function renderFirstView(o: FirstViewOptions): Promise<string> {
     const made = await renderView(o, `data-map-jr-ssr="" preserveAspectRatio="xMidYMid slice" style="position:absolute;${o.bounds ? 'inset:0;width:100%;height:100%' : `left:50%;top:50%;width:max(100%,${o.width}px);height:max(100%,${o.height}px);transform:translate(-50%,-50%)`};max-width:none;max-height:none"`);
     made.svg = `<div data-map-jr-ssr="" style="position:absolute;inset:0;overflow:hidden">${made.svg}</div>`;
     const raw = o.attribution === false ? false : [o.attribution ?? made.attribution].flat();
+    const {tiles} = made;
     if (o.controls) {
-        return made.svg + controlsMarkup({controls: o.controls, ...made.view, width: o.width, colorScheme: o.colorScheme ?? 'light', locale: o.locale, nonce: o.nonce, minZoom: o.minZoom, maxZoom: o.maxZoom,
-            projection: o.projection, terrain: !!o.terrain, credits: raw, attribution: o.attributionOptions});
+        return {tiles, html: made.svg + controlsMarkup({controls: o.controls, ...made.view, width: o.width, colorScheme: o.colorScheme ?? 'light', locale: o.locale, nonce: o.nonce, minZoom: o.minZoom, maxZoom: o.maxZoom,
+            projection: o.projection, terrain: !!o.terrain, credits: raw, attribution: o.attributionOptions})};
     }
     const credits = raw === false ? [] : raw.map(cleanCredits).filter(Boolean);
     const light = 'background:rgba(255,255,255,.75);color:#333', dark = 'background:rgba(30,30,30,.75);color:#ccc';
     const colors = o.colorScheme === 'dark' ? dark : o.colorScheme === 'auto' ? light + ';color-scheme:light dark;background:light-dark(rgba(255,255,255,.75),rgba(30,30,30,.75));color:light-dark(#333,#ccc)' : light;
-    return made.svg + (credits.length ? `<div data-map-jr-ssr="" style="position:absolute;right:0;bottom:0;${colors};font:11px/1.4 sans-serif;padding:2px 6px">${credits.join(' ')}</div>` : '');
+    return {tiles, html: made.svg + (credits.length ? `<div data-map-jr-ssr="" style="position:absolute;right:0;bottom:0;${colors};font:11px/1.4 sans-serif;padding:2px 6px">${credits.join(' ')}</div>` : '')};
 }
 
 /** The options of `renderElement`: those of `renderToSVG` that the description does not give, and the attributes of the element. */
-export interface ElementRenderOptions extends Omit<RenderOptionsBase, 'style' | 'colorScheme' | 'globalState' | 'center' | 'zoom' | 'bearing' | 'bounds' | 'padding' | 'fitMaxZoom' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
+export interface ElementRenderOptions extends Omit<RenderOptionsBase, 'style' | 'colorScheme' | 'globalState' | 'center' | 'zoom' | 'bearing' | 'pitch' | 'bounds' | 'padding' | 'fitMaxZoom' | 'width' | 'height' | 'images' | 'fontFamily' | 'sources' | 'layers' | 'sprite' | 'terrain' | 'data'> {
     /**
      * The width in CSS pixels that the element has on most screens.
      * @default 800
@@ -509,7 +527,7 @@ export function firstViewOptions(description: MapDescription, options: Descripti
     const {width = 800, height = 500, attribution, ...rest} = options;
     // Like the map, a `view` takes the place of the `initialView`, bounds included.
     const fit = !d.view && d.initialView?.bounds;
-    return {...rest, style: d.style as FirstViewOptions['style'], center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number,
+    return {...rest, style: d.style as FirstViewOptions['style'], center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bearing: view.bearing as number, pitch: view.pitch as number,
         bounds: fit ? fit as LngLatBoundsInput : undefined, padding: d.initialView?.fitPadding, fitMaxZoom: d.initialView?.fitMaxZoom, width, height,
         images: d.images as RenderOptionsBase['images'], sources: d.sources, layers: d.layers as RenderOptionsBase['layers'], terrain: d.terrain, sprite: d.sprite, data: d.data, fontFamily: d.fontFamily,
         attribution: d.attribution === false ? false : attribution, colorScheme: d.colorScheme ?? 'light', globalState: d.globalState as Record<string, unknown> | null | undefined,
@@ -555,7 +573,7 @@ export async function renderElement(description: MapDescription, options: Elemen
     let first = '';
     try {
         // (The options come from the description; the center, the zoom and the bounds are those that this function worked out above.)
-        first = await renderFirstView({...firstViewOptions(d, {...rest, width, height, attribution}), center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bounds: fit ? fit as LngLatBoundsInput : undefined});
+        first = (await renderFirstView({...firstViewOptions(d, {...rest, width, height, attribution}), center: (view.center as LngLatLike) ?? [0, 0], zoom: (view.zoom as number) ?? 0, bounds: fit ? fit as LngLatBoundsInput : undefined})).html;
     } catch (cause) {
         console.error(`[map-jr-gl] E40826 renderElement(): the server render failed, and the element has no first view. The map draws in the browser. The cause: ${(cause as Error)?.message ?? cause}`);
     }
