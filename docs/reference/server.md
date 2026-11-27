@@ -347,8 +347,8 @@ the first view, and the console of the server has the error.
 `RenderOptions`. The element always has the style `display:block;position:relative;overflow:hidden`, and the text of
 `attributes.style` follows it.
 
-An entry of `attributes` whose name the element already has is left out, with no
-warning: the attribute that the description writes (such as `zoom` or `nonce`) keeps its value, and of two entries with
+An entry of `attributes` whose name the element already has is left out, and the server
+warns once per name (E2404): the attribute that the description writes (such as `zoom` or `nonce`) keeps its value, and of two entries with
 the same name the first stays. Names are compared without letter case. Without `label`, the `aria-label` of the first view is `Map.Title` of the `locale` of
 the description, and `'Map'` when the locale has none, as in the map in the browser.
 

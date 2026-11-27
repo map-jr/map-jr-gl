@@ -486,6 +486,9 @@ export interface ElementRenderOptions extends Omit<RenderOptionsBase, 'style' | 
     attributes?: Record<string, string>;
 }
 
+// The names that `renderElement` warned about, once per process; it holds no state of a map.
+const warnedAttributes = new Set<string>();
+
 /**
  * Renders the element `<map-jr>` of `@map-jr/map-jr-gl/element` for a description, with the first view as its content.
  * A field that has an attribute of `<map-jr>` and a value that is not an object, such as `zoom` or the URL of a style,
@@ -513,8 +516,9 @@ export async function renderElement(description: MapDescription, options: Elemen
         if (!/^[a-z_:][\w:.-]*$/i.test(name) || /^on/i.test(name)) throw new Error(/^on/i.test(name) ? `[map-jr-gl] E50826 renderElement(): "${name}" is not the name of an attribute that the element can have: an event handler attribute runs script. Give names such as "id", "class" or "style".` : `[map-jr-gl] E30826 renderElement(): "${name}" is not the name of an attribute. Give names such as "id", "class" or "style".`);
         // (Names of attributes are not case sensitive: `Style` and `style` are one attribute, and a browser ignores the second.)
         // (An attribute that the description already writes, or that an earlier entry wrote, keeps its first value: a browser ignores the second one (#2404).)
-        const lower = name.toLowerCase();
+        const lower = name.toLowerCase(), attribute = name;
         if (lower === 'style') extra += ';' + attributes[name]; else if (!attrs.some(a => a.split(/[=\s]/, 1)[0].toLowerCase() === lower)) attrs.push(`${name}="${quote(attributes[name])}"`);
+        else if (!warnedAttributes.has(lower)) { warnedAttributes.add(lower); console.warn(`[map-jr-gl] E2404 renderElement(): attributes.${attribute} is dropped, because the element already has the attribute "${lower}" from the description or from an earlier entry. Remove it from attributes or change the description.`); }
     }
     attrs.push(`style="${quote('display:block;position:relative;overflow:hidden' + extra)}"`);
     let first = '';

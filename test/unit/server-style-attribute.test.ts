@@ -34,7 +34,13 @@ test('renderElement has one style attribute on the element, whatever the case of
 
 test('renderElement writes each attribute once, whatever the case of the name in attributes (#2404)', async () => {
     const description = {style, initialView: {center: [0, 0] as [number, number], zoom: 3}, nonce: 'n'};
-    const html = await renderElement(description as any, {attributes: {nonce: 'x', Zoom: '5', id: 'a', ID: 'b', class: 'c'}});
+    const warnings: string[] = [], warn = console.warn;
+    console.warn = (m: string) => { warnings.push(m); };
+    let html: string;
+    try { html = await renderElement(description as any, {attributes: {nonce: 'x', Zoom: '5', id: 'a', ID: 'b', class: 'c'}}); } finally { console.warn = warn; }
+    const dropped = warnings.filter(w => w.includes('E2404'));
+    assert.equal(dropped.length, 3, dropped.join('\n'));
+    assert.ok(dropped.some(w => w.includes('attributes.Zoom is dropped')) && dropped.every(w => w.startsWith('[map-jr-gl] E2404 renderElement(): attributes.')));
     const tag = html.match(/^<map-jr [^>]*>/)![0];
     const names = [...tag.matchAll(/\s([\w:.-]+)(?==|\s|>)/g)].map(m => m[1].toLowerCase());
     assert.deepEqual(names.filter((n, i) => names.indexOf(n) !== i), [], tag);
