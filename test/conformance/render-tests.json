@@ -697,7 +697,7 @@
 "line-dasharray/round/segments": "match",
 "line-dasharray/round/single-dasharray-element": "match",
 "line-dasharray/round/zero-gap-width": "match",
-"line-dasharray/slant": "near",
+"line-dasharray/slant": "match",
 "line-dasharray/zero-length-gap": "match",
 "line-dasharray/zoom-history": "match",
 "line-gap-width/default": "match",

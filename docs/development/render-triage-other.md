@@ -100,12 +100,11 @@ table names the causes that this triage found. "label" names a label of
 | `line-dasharray/function/line-width-composite-function` | near 3.7% | The ends of the dashes are sharp, where MapLibre softens them over one or more pixels. | #1804 |
 | `line-dasharray/literal/line-width-composite-function` | near 2.6% | The ends of the dashes are sharp, where MapLibre softens them over one or more pixels. | #1804 |
 | `line-dasharray/literal/line-width-zoom-function` | near 3.9% | The ends of the dashes are sharp, where MapLibre softens them over one or more pixels. | #1804 |
-| `line-dasharray/overscaled` | near 1.4% | Some dashed lines are drawn solid. | #1806 |
+| `line-dasharray/overscaled` | near 1.4% | The dashes of an over-zoomed line start at another place than in MapLibre, which slices the tile and starts the distance again at each slice. | #2527 |
 | `line-dasharray/property-function/cap-default` | differ 5.6% | With a `line-dasharray` for each feature, the dashes of one line are longer than in MapLibre. | #1807 |
 | `line-dasharray/round/segments` | near 3.3% | Round dashes have another length and position than in MapLibre. | #1805 |
 | `line-dasharray/round/single-dasharray-element` | differ 6.1% | The round caps at the ends of the line are shorter, and the thin lines are lighter. | #1805 |
 | `line-dasharray/round/zero-gap-width` | near 3.7% | Round dashes have another length and position than in MapLibre. | #1805 |
-| `line-dasharray/slant` | near 3.3% | Some dashed lines are drawn solid. | #1806 |
 | `line-dasharray/zero-length-gap` | differ 24.6% | `line-offset` and `line-blur` for each feature are not read. | label (line-offset and line-blur for each feature, later) |
 | `line-gradient/gradient-step-zoomed-cross-continental` | near 4.5% | The line is drawn in one color instead of the steps of `line-gradient`. | #1808 |
 | `line-gradient/gradient-step-zoomed` | near 4.2% | The steps of `line-gradient` are blended into a smooth gradient. | #1808 |
@@ -189,8 +188,8 @@ table names the causes that this triage found. "label" names a label of
 | #1803 | `fill-extrusion` edges are a pixel above and to the right of MapLibre's at pitch 0. | 3 |
 | #1804 | `line-dasharray`: the ends of the dashes are sharp where MapLibre softens them. | 5 |
 | #1805 | `line-dasharray` with `line-cap: round`: dashes have another length and position. | 3 |
-| #1806 | `line-dasharray`: some dashed lines are drawn solid (`slant`, `overscaled`). | 2 |
 | #1807 | `line-dasharray` for each feature gives longer dashes than in MapLibre. | 1 |
+| #2527 | `line-dasharray`: the dashes of an over-zoomed line start at another place than in MapLibre. | 1 |
 | #1808 | `line-gradient` with `step` is blended into a smooth gradient or drawn in one color. | 2 |
 | #1809 | `line-gradient`: joins of segments are drawn twice, so they are darker. | 2 |
 | #1810 | `line-pattern` is sampled sharper than in MapLibre and scaled differently on narrow lines. | 13 |
