@@ -3883,6 +3883,42 @@ for (const mode of renderers) {
         check('[main] compat: a square cap does not lengthen the dashes of a dashed line, as in MapLibre GL JS (#2144)',
             [1, 2].every(d => rows[d].butt > 0 && Math.abs(rows[d].square - rows[d].butt) <= rows[d].butt * 0.1), JSON.stringify(rows));
     }
+    // #2443: on a pitched map, each pixel of a line across a tile edge is drawn by one tile, as with the stencil of
+    // MapLibre GL JS. Six lines of width 16 and opacity 0.5 cross several tiles at zoom 4, DPR 2, in four views of pitch
+    // 50 to 60. A pixel inside a line (as gray as the line 3 pixels away in all four directions) that is lighter is a
+    // hole, and one that is darker is drawn twice. Before the fix the views had 5 holes and 5 pixels drawn twice.
+    if (mode === 'main') {
+        const pg = await browser.newPage({viewport: {width: 600, height: 400}, deviceScaleFactor: 2});
+        await pg.goto(page.url());
+        const r = await pg.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), out = [];
+            const features = [0, 1, 2, 3, 4, 5].map(i => ({type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates: [[-20 + i * 2, -8 + i * 4], [20 - i * 3, -8 + i * 4 + (i % 2) * 3]]}}));
+            for (const [pitch, bearing] of [[60, -40], [60, 200], [60, 250], [50, 300]]) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:0;top:0;width:600px;height:400px'}));
+                const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, center: [0, 0], zoom: 4, pitch, bearing, style: {version: 8,
+                    sources: {l: {type: 'geojson', data: {type: 'FeatureCollection', features}}}, layers: [
+                        {id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                        {id: 'l', type: 'line', source: 'l', layout: {'line-cap': 'butt'}, paint: {'line-color': '#000', 'line-width': 16, 'line-opacity': 0.5}}]}});
+                await new Promise(res => { m.once('idle', res); setTimeout(res, 10000); });
+                m.triggerRepaint(); await new Promise(res => m.once('render', res));
+                const cv = m.getCanvas(), w = cv.width, h = cv.height, c = Object.assign(document.createElement('canvas'), {width: w, height: h}).getContext('2d');
+                c.drawImage(cv, 0, 0);
+                const d = c.getImageData(0, 0, w, h).data, g = (x, y) => d[(y * w + x) * 4 + 1], near = v => Math.abs(v - 128) <= 2;
+                let holes = 0, twice = 0, inside = 0;
+                for (let y = 3; y < h - 3; y++) for (let x = 3; x < w - 3; x++) {
+                    if (!(near(g(x - 3, y)) && near(g(x + 3, y)) && near(g(x, y - 3)) && near(g(x, y + 3)))) continue;
+                    inside++;
+                    if (g(x, y) > 148) holes++; else if (g(x, y) < 108) twice++;
+                }
+                out.push({pitch, bearing, inside, holes, twice});
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        await pg.close();
+        check('[main] compat: on a pitched map a line across a tile edge has each pixel drawn once, with no hole and no pixel drawn twice (#2443)',
+            r.every(v => v.inside > 10000 && !v.holes && !v.twice), JSON.stringify(r));
+    }
     // #1450: a removed image source frees its picture and its texture. The probe counts live textures that hold a 3x5
     // image (only the pictures of this check do), on the main thread.
     if (mode === 'main') {
