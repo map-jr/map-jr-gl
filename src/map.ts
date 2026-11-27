@@ -587,7 +587,7 @@ export class Map {
             for (const w of this.workers.splice(0)) w.terminate();
             this.tilePool?.release();
             this.tilePool = undefined; // (a `remove` during the start below must not give the same workers back again)
-            this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0; this.buffer = undefined; this.jumped = 0; this.turned = this.reported = 0;
+            this.ready = false; this.queue = []; this.tilesLoaded = false; this.seq = 0; this.buffer = undefined; this.jumped = 0; this.beganAt = 0; this.turned = this.reported = 0;
             this.loadedSources.clear(); // (the new engine has no tiles)
             const fresh = this.canvas.cloneNode() as HTMLCanvasElement, tr = this.tr;
             this.canvas.replaceWith(fresh);
@@ -869,7 +869,7 @@ export class Map {
             // (A rotate drag that pauses with the button down has not ended: MapLibre GL JS ends it once, at the release, #1873.)
             // (On the worker renderer the reports of a rotate drag can come after its release: the drag ends at the report
             // of its last turn, with one `moveend`, #2163.)
-            if (this.moving && !e.moving && !this.dragging && !this.awaitingInertia && !this.dragRotate.active && !this.turnPending()) this.settle();
+            if (this.moving && !e.moving && (e.seq ?? this.beganAt) >= this.beganAt && !this.dragging && !this.awaitingInertia && !this.dragRotate.active && !this.turnPending()) this.settle();
         } else if (e.type === 'resource') {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
         } else if (e.type === 'contextlost') {
@@ -1240,7 +1240,9 @@ export class Map {
     /** @internal Called when `easeTo` has sent an animation (not a jump). The compat entry starts the movement here. */
     protected easeStarted() {}
     /** @internal Starts a movement now, with `movestart`, instead of at the first report of the engine. */
-    protected begin() { if (!this.moving) { this.moving = true; this.fire('movestart'); } }
+    protected begin() { this.beganAt = this.seq; if (!this.moving) { this.moving = true; this.fire('movestart'); } }
+    /** The command that began the movement: a report of the engine from before it does not end the movement. */
+    private beganAt = 0;
     /**
      * Moves the camera along a curve that zooms out and back in, with the options of `flyTo` of MapLibre GL JS 6.17.
      * The defaults are `curve` 1.42 and `speed` 1.2, and without `duration` the duration follows from the distance.
