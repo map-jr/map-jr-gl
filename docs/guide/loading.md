@@ -107,7 +107,7 @@ when a map needs it, from the folder of the worker file.
 | `map-jr-gl-worker-globe.js` | A style whose `projection` draws a globe. With `renderer: 'main'`, the page loads the globe as a chunk of the library instead. |
 | `map-jr-gl-worker-subdivide.js` | A style whose `projection` draws a globe: the tile workers cut the tiles along the grid of the globe with it |
 | `map-jr-gl-worker-layers.js` | A style with a layer of the type `heatmap`, `hillshade` or `color-relief`. With `renderer: 'main'`, the page loads it as a chunk of the library instead. |
-| `map-jr-gl-worker-query.js` | The queries of features (`queryFeatures` and `querySource` of `@map-jr/map-jr-gl`, `queryRenderedFeatures` and `querySourceFeatures` of `@map-jr/map-jr-gl/maplibre-compat`). A map loads it after its first `idle`, and a query before that waits for the file. With `renderer: 'main'`, the page loads it as a chunk of the library instead. |
+| `map-jr-gl-worker-query.js` | The queries of features. A map loads it after its first `idle`, or at a query before that. With `renderer: 'main'`, the page loads it as a chunk of the library instead. |
 
 Copy every `map-jr-gl-worker*.js` file of `node_modules/@map-jr/map-jr-gl/dist/` into one folder under its own name, so that a part
 that a later version adds is there too. When a part is missing, the worker reports an error that names the file
