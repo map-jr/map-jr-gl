@@ -536,6 +536,8 @@ export class Map extends CoreMap {
         this.unsupported('The option logoPosition', !o.logoPosition);
         // (Development build) `validateStyle: false` skips the check of the style, as in MapLibre GL JS (#1748, #2121). `setStyle` can override it for one style.
         if (__DEV__) this.noValidate = this.noValidateMap = o.validateStyle === false;
+        // (MapLibre GL JS reads it for the skirts of terrain tiles; its default is "auto".)
+        if (__DEV__) this.unsupported('The option terrainSkirtLength', o.terrainSkirtLength === undefined || o.terrainSkirtLength === 'auto');
         // (Labels here always fade for a fixed time, and a drag with the right button always turns and tilts the map.)
         this.unsupported('The option fadeDuration', o.fadeDuration === undefined || o.fadeDuration === 300);
         this.unsupported('The option pitchWithRotate: false', o.pitchWithRotate !== false);

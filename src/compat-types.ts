@@ -81,6 +81,8 @@ export type MapOptions = Omit<CoreMapOptions, 'dragPan' | 'dragRotate'> & {
     validateStyle?: boolean;
     /** The angle in degrees from north within which `snapToNorth` and the end of a gesture turn the map north. The default is 7, and 0 turns the snap off. */
     bearingSnap?: number;
+    /** No effect: a value other than the default `"auto"` warns once. */
+    terrainSkirtLength?: 'auto' | 'none' | number;
     /** No effect: labels show and hide without a fade. */
     fadeDuration?: number;
     /** No effect: a drag with the right mouse button changes the bearing and the pitch. */
