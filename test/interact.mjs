@@ -424,6 +424,25 @@ for (const mode of renderers) {
         const edgeOurs = await edgeDrag('ours'), edgeMl = await edgeDrag('ml');
         check(`[${mode}] the globe: the pointer moves of one frame turn the globe once, and a drag near its edge ends where MapLibre GL JS ends (#479)`,
             edgeOurs.length === 2 && edgeMl.length === 2 && Math.hypot(edgeOurs[0] - edgeMl[0], edgeOurs[1] - edgeMl[1]) < 0.1, JSON.stringify({edgeOurs, edgeMl}));
+        // stop() during an easeTo ends the movement inside the call, with moveend and no move, as in MapLibre GL JS (#2393).
+        const stopOrder = lib => page.evaluate(async ([lib, renderer]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const log = [];
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            m.easeTo({center: [20, 50], duration: 2000});
+            await new Promise(r => setTimeout(r, 500));
+            log.push('|stop'); m.stop(); log.push('|stopret');
+            await new Promise(r => setTimeout(r, 500));
+            m.remove(); el.remove();
+            return log.slice(log.indexOf('|stop')).join(' ');
+        }, [lib, mode]).catch(e => String(e));
+        const stopOurs = await stopOrder('ours'), stopMl = await stopOrder('ml');
+        check(`[${mode}] stop() during an easeTo fires moveend inside the call and no move after it, as in MapLibre GL JS (#2393)`,
+            stopOurs === stopMl && stopMl === '|stop moveend |stopret', JSON.stringify({stopOurs, stopMl}));
         // A drag pan on a flat map: a marker stays on its point in every frame (the pan reaches the camera with the move,
         // #479), and the events come in the order of MapLibre GL JS: movestart, dragstart, then move before each drag.
         const flatDrag = await page.evaluate(async renderer => {

@@ -1235,7 +1235,7 @@ export class Map {
     }
     private flight?: number[];
     /** Stops the animation of the camera, where it is. */
-    stop() { this.eased = undefined; this.post({type: 'stop'}); return this; }
+    stop() { this.eased = undefined; this.post({type: 'stop'}); this.jumped = this.seq; return this; }
 
     /**
      * The center and zoom that fit `bounds` ([west, south, east, north] or [[west, south], [east, north]]) in view at

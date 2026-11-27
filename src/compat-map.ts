@@ -816,6 +816,18 @@ export class Map extends CoreMap {
         this.moved((ease ? parts.flatMap((s, i) => i > 1 ? [...axes.map(a => a + s), 'moveend'] : ['move' + s, ...axes.map(a => a + s)]) : ['movestart', 'move', ...axes.flatMap(a => parts.map(s => a + s)), 'moveend']).map(t => [t, data]));
         return this;
     }
+    /**
+     * As in MapLibre GL JS, a movement that runs ends during the call, with its end events and no `move` (#2393). A
+     * gesture is not stopped here, as with `jumpTo`. The reports of the engine up to this command fire no events.
+     */
+    override stop() {
+        super.stop();
+        if (!this.gesturing?.()) {
+            this.hushed = this.jumped; this.seen = undefined; this.hushedAt = [this.tr.lng, this.tr.lat, this.tr.zoom, this.tr.bearing, this.tr.pitch];
+            this.halt();
+        }
+        return this;
+    }
     /** The command of the last jump and its camera: the engine's reports up to that command, or with that camera after
      * other commands, fire no events, because the jump fired them during the call (#2340). (After a restart of the engine,
      * whose commands count from 0 again, only the camera counts.) */
