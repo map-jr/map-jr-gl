@@ -231,6 +231,14 @@ The SVG has the attribute `data-map-jr-ssr`, and its style is `position: absolut
 height: 100%`. A map of `@map-jr/map-jr-gl` or of `@map-jr/map-jr-gl/maplibre-compat` removes each element with
 `data-map-jr-ssr` from its container when it has loaded the tiles of its first view.
 
+The SVG groups the output of each style layer that draws something in the view as `<g data-layer="<layer id>">`, in
+the order of the style, so that an editor such as Illustrator or Inkscape can tell the layers apart. The text and the
+icons of symbol layers are drawn after these groups and are not in them.
+
+The layer id is in `data-layer` and not in
+`id`: an `id` must be unique in a document, the SVG already uses `c0`, `p0`, `i0` and `sprite` as ids, and two SVGs on
+one page share one set of ids.
+
 ## `renderFirstView`
 
 ```ts

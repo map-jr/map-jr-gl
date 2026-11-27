@@ -127,7 +127,9 @@ export function renderSVG(s: SVGScene): string {
         }
     }
 
+    const marks: [string, number][] = [];
     for (const L of s.layers) {
+        marks.push([L.id, body.length]);
         if (!L.visible || zoom < L.minzoom || zoom >= L.maxzoom || L.type === 'symbol') continue;
         if (L.type === 'hillshade' || L.type === 'heatmap' || L.type === 'color-relief') continue; // drawn by the client only for now
         const p = L.p, opacity = p.opacity.dd ? 1 : p.opacity.eval(zoom);
@@ -215,6 +217,15 @@ export function renderSVG(s: SVGScene): string {
         if (!id) { pathIds.set(d, id = 'p' + pathIds.size); defs.push(`<path id="${id}" vector-effect="non-scaling-stroke" d="${d}"/>`); }
         body[i] = `<use href="#${id}" ${attrs}/>`;
     }
+    // Each style layer that drew something is a group with its id in `data-layer`. It is not an `id`: the ids of one
+    // document must be unique, and the clip, path and icon ids above or a second SVG on the same page could repeat it.
+    marks.push(['', body.length]);
+    marks.forEach(([layer, at], k) => {
+        const end = marks[k + 1]?.[1];
+        if (end === undefined || end === at) return;
+        body[at] = `<g data-layer="${escapeXML(layer)}">${body[at]}`;
+        body[end - 1] += '</g>';
+    });
 
     // A symbol on the ground of a tilted map (`Placed.frame`) is drawn with its frame about its center, and others turn by their angle.
     const turn = (x: number, y: number, a: number, f?: number[]) => f
