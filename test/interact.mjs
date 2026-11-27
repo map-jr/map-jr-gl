@@ -148,6 +148,38 @@ for (const mode of renderers) {
     check(`[${mode}] paint transitions: setPaintProperty and setStyle with diff move a colour over its transition, idle waits, diff: false is at once (#960)`,
         transitions.start === 0 && transitions.middle > 40 && transitions.middle < 215 && !transitions.idleInMiddle && transitions.end === 255 && transitions.diffMiddle > 40 && transitions.diffMiddle < 215 && transitions.instant === 255, JSON.stringify(transitions));
 
+    // The array of queryRenderedFeatures that is read without `await` keeps its features after a change of the style that
+    // does not change tile data (setPaintProperty, setStyle with a diff), as in MapLibre GL JS (#817).
+    {
+        const kept = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), style = await (await fetch('/style.json')).json();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:50'}));
+            const m = new mod.Map({container: el, style, center: [10, 45], zoom: 3, renderer, attributionControl: false});
+            const idle = () => new Promise(r => { m.once('idle', r); setTimeout(r, 15000); }), out = {};
+            await idle();
+            await m.queryRenderedFeatures(); // (the engine answers; the array of the next call has the answer)
+            out.first = m.queryRenderedFeatures().length;
+            const water = style.layers.find(l => l.type === 'fill');
+            m.setPaintProperty(water.id, 'fill-color', '#f00'); out.paint = m.queryRenderedFeatures().length;
+            await idle();
+            m.setStyle(JSON.parse(JSON.stringify(style)), {diff: true}); out.diff = m.queryRenderedFeatures().length;
+            // As in MapLibre GL JS, a filter takes effect when the tiles have loaded again: the array is the old one at once, and the new one after idle.
+            const ids = [water.id], q = () => m.queryRenderedFeatures(undefined, {layers: ids});
+            await idle(); await q(); out.before = q().length;
+            m.setFilter(water.id, ['==', ['get', 'no-such-property'], 1]); out.filterNow = q().length;
+            await idle(); out.filterIdle = q().length;
+            // Data of another source drops only the answers that named that source; `refreshTiles` of the source drops its answers.
+            m.setFilter(water.id, null); await idle(); await q(); out.again = q().length;
+            m.addSource('other', {type: 'geojson', data: {type: 'FeatureCollection', features: []}});
+            m.getSource('other').setData({type: 'FeatureCollection', features: []}); out.otherData = q().length;
+            m.refreshTiles?.(Object.keys(style.sources).find(k => style.sources[k].type === 'vector')); out.refreshed = q().length;
+            m.remove(); el.remove();
+            return out;
+        }, mode).catch(e => ({error: String(e)}));
+        check(`[${mode}] compat: the array of queryRenderedFeatures keeps its features after setPaintProperty and setStyle with a diff, and after setData of another source (#817)`,
+            kept.first > 0 && kept.paint === kept.first && kept.diff === kept.first && kept.before > 0 && kept.filterNow === kept.before && kept.filterIdle === 0 && kept.again === kept.before && kept.otherData === kept.before && kept.refreshed === 0, JSON.stringify(kept));
+    }
+
     // The globe (#463): a map with the projection globe draws a sphere (the corners of the canvas stay empty), places
     // a point where `project` says, turns under a drag as in MapLibre GL JS, and turns into Mercator at zoom 12.
     // A second map on the page with Mercator is not affected.
@@ -910,14 +942,9 @@ for (const mode of renderers) {
                 await new Promise(r => setTimeout(r, 16));
             }
             window.touch('pointerup', 11, ...to[0]); window.touch('pointerup', 12, ...to[1]);
-            // Wait until the camera has not changed for some time: in a worker the gesture is applied a little later.
-            await new Promise(r => setTimeout(r, 400));
-            for (let i = 0, quiet = 0, last = ''; i < 40 && quiet < 2; i++) {
-                await new Promise(r => setTimeout(r, 100));
-                const now = JSON.stringify(window.cam());
-                quiet = now === last ? quiet + 1 : 0;
-                last = now;
-            }
+            // Wait for the real state: the gesture is applied a little later in a worker, and a turn that ends near north snaps to it (#1324).
+            await new Promise(r => setTimeout(r));
+            for (let i = 0; i < 100 && !(window.map.areTilesLoaded() && !window.map.isMoving()); i++) await new Promise(r => setTimeout(r, 50));
         };
         window.cam = () => ({zoom: window.map.getZoom(), bearing: window.map.getBearing(), pitch: window.map.getPitch()});
     });
