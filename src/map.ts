@@ -1005,7 +1005,7 @@ export class Map {
     private wantsFrames = false;
 
     // ---- requests ----
-    private transformRequest: RequestTransform | null = null;
+    protected transformRequest: RequestTransform | null = null;
     /** Sets or removes the function that changes each request (for example, to add a header). */
     setTransformRequest(fn: RequestTransform | null) { this.transformRequest = fn; this.sendRequestRules(); return this; }
     /** Tells the engine which requests need a question to this thread. */
