@@ -288,7 +288,7 @@ or a popup. It works only inside `MapJr`. The content is Vue content with compon
 For many markers, draw a symbol layer with the points in [`data`](#data): see
 [Markers and popups](../guide/markers-and-popups.md).
 
-Without content in the slot, the element shows the default pin (`defaultPin` of the main API, 27 by 41 pixels, with its
+Without content in the slot (or with a slot that renders nothing), `MapOverlay` shows the default pin (`defaultPin` of the main API, 27 by 41 pixels, with its
 tip at the position when `anchor` is `"bottom"`). The prop `color` is a CSS color for that pin and has the default
 `'#3fb1ce'`. The pin appears after the map code has loaded; `color` has no effect when the slot has content.
 

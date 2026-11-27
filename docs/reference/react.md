@@ -248,7 +248,7 @@ See [Show the first view before the script runs](../guide/server-rendering.md#sh
 props are the options of [`overlay`](map.md#overlay) of the map ([`OverlayOptions`](map.md#overlayoptions)), `children` and `color`. The map
 applies the props of each render.
 
-Without `children`, the element shows the default pin (`defaultPin` of the main API, 27 by 41 pixels, with its tip at the
+Without `children` (or with children that render nothing), `MapOverlay` shows the default pin (`defaultPin` of the main API, 27 by 41 pixels, with its tip at the
 position when `anchor` is `"bottom"`). The prop `color` is a CSS color for that pin and has the default `'#3fb1ce'`.
 `color` has no effect when there are children.
 
