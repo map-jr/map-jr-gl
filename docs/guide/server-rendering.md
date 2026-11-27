@@ -242,9 +242,10 @@ Without the helper, pass these fields to `renderFirstView` by hand.
 - With `colorScheme: 'auto'`, the style sheet follows the color scheme of the browser, and the control `colorScheme()`
   has both icons, of which the browser shows one. The style of the first view is the `light` style of a pair.
 - With a [Content Security Policy](loading.md#content-security-policy), pass the `nonce` of the description. The
-  markup of `renderFirstView` then has no `style` attribute: the position and the size of the picture and of the credits are
-  rules of a style sheet that has the nonce. Without a `nonce`, they are `style` attributes, which a policy with `style-src`
-  and no `'unsafe-inline'` blocks. The element `<map-jr>` that `renderElement` writes still has a `style` attribute.
+  position and size of the picture and of the credits are rules of a style sheet that has the nonce. Without a `nonce`,
+  they are `style` attributes, which a policy with `style-src` and no `'unsafe-inline'` blocks. Two cases keep a `style`
+  attribute that the policy blocks: the element `<map-jr>` that `renderElement` writes, and a text label with
+  `font-scale` in a `format` expression.
 - Each map carries its own copy of the style sheet of the controls, so the output for a page with several maps grows
   with each map.
 
