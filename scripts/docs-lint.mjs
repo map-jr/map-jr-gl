@@ -179,7 +179,7 @@ const british = new RegExp('(?:colour|behaviour|favour|honour|neighbour|flavour)
 /** Names of code that are British words, each with the files where it may appear. `*` is every file. */
 const codeNames = {
     rasteriser: ['*'], // the option of renderToImage
-    grey: ['src/expr.ts'], // the CSS color names
+    grey: ['src/color-names.ts'], // the CSS color names
     metres: ['src/custom-layers.ts', 'src/geo.ts', 'src/globe.ts'],
     centre: ['src/contour.ts', 'src/gl.ts', 'src/tile.ts'],
     colour: ['src/webp.ts'],
