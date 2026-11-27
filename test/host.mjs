@@ -3912,7 +3912,7 @@ for (const renderer of ['worker', 'main']) {
                 check(`[${renderer}] a map loads the part query, and a query finds the feature (#2342)`,
                     answered.idle && answered.found === 'a' && !answered.errors.length && answeredAsked.length > 0, JSON.stringify({answered, answeredAsked}));
                 check(`[${renderer}] the part query does not load: a query rejects with an error that names the file, and the map stays idle (#2342)`,
-                    missing.idle && missing.still && /^rejected: .*query/.test(missing.found) && !missing.errors.length, JSON.stringify(missing));
+                    missing.idle && missing.still && /^rejected: \[map-jr-gl\] .*query/.test(missing.found) && !missing.errors.length, JSON.stringify(missing));
             } finally { await asks.close(); }
             // A hillshade on 3D terrain whose part `layers` comes after the pictures of the ground tiles were drawn (#2215):
             // the pictures are drawn again with the hillshade. The same for a hillshade that `update()` adds after load, and
