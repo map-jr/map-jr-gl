@@ -1775,7 +1775,7 @@ for (const renderer of renderers) {
             await idle(bad);
             for (let i = 0; i < 2; i++) { // (twice: a warning comes once)
                 // (The second time, the template is replaced by one without the slot {{fill}}.)
-                bad.update({...spec, interactive: false, initialView: {center: [0, 0], zoom: 2}, images: i ? {dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'} : spec.images});
+                bad.update({...spec, antialias: true, initialView: {center: [0, 0], zoom: 2}, images: i ? {dot: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'} : spec.images});
                 await bad.queryFeatures({x: 100, y: 75}, {layers: ['nope']}).catch(() => {});
                 await bad.querySource('nope', {x: 100, y: 75}, {layers: ['lost']}).catch(() => {});
                 await bad.queryFeatures({x: 100, y: 75}, {sourceLayers: ['water'], sources: ['omt'], radius: 5}).catch(() => {});
@@ -1792,7 +1792,7 @@ for (const renderer of renderers) {
         }, renderer);
         const expected = ['E0 createMap(): the container has height 0', 'E1 interactiveLayers: the style has no layer "nope"', 'E3 queryFeatures(): the style has no layer "nope"',
             'E4 querySource(): the style has no source "nope"', 'E5 layers: the layer "lost" has before: "nonexistent"', 'E6 layers: the layer "lost" uses the source "missing"', 'E14 images: a layer gives the parameter "colour" to the image "dot"', 'E14 images: a layer gives the parameter "size" to the image "dot"', 'E14 images: a layer gives the parameter "fill" to the image "dot"',
-            'E8 update(): "interactive" changed', 'E8 update(): "initialView" changed', 'E12 queryFeatures(): "sourceLayers" is not an option', 'E12 queryFeatures(): "sources" is not an option', 'E13 queryFeatures(): "radius" has an effect only in a query at a point or a position',
+            'E8 update(): "antialias" changed', 'E8 update(): "initialView" changed', 'E12 queryFeatures(): "sourceLayers" is not an option', 'E12 queryFeatures(): "sources" is not an option', 'E13 queryFeatures(): "radius" has an effect only in a query at a point or a position',
             'E13 querySource(): "radius" has an effect only', 'E11 querySource(): "zoom" has an effect only', 'E12 querySource(): "layers" is not an option'];
         check(`[${renderer}] common mistakes: each gives one warning, a wrong place of a query is refused with a message, and a correct description gives no warning`,
             warnings.correct.length === 0 && warnings.said.length === expected.length && expected.every(e => warnings.said.filter(w => w.startsWith('[map-jr-gl] ' + e)).length === 1)
