@@ -11,6 +11,7 @@ export type {PaddingInput};
 export type {FeatureOptions, FeaturePlace, SourceOptions};
 import {createStore, type Readable} from './store.ts';
 import {Marker, Popup, part, type PopupOffset} from './overlays.ts';
+export {defaultPin} from './overlays.ts';
 import {dataTypeError, extended, isStylePair, styleFor, withData, type Anchor} from './markers.ts';
 import type {QueriedFeature} from './query.ts';
 import type {Control, ControlPosition} from './controls.ts';
@@ -1215,7 +1216,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         if (styled && !restyled && differ(next.fonts, before?.fonts)) {
             const changed: FontFaces = {};
             for (const name in next.fonts) if (differ(next.fonts[name], before?.fonts?.[name])) changed[name] = next.fonts[name];
-            map.addFonts(fontFaces(absolute(changed)));
+            map.addFonts(absolute(changed));
         }
         // (Before the view: a view past the antimeridian is constrained by the new setting.)
         if ((next.renderWorldCopies ?? true) !== (before?.renderWorldCopies ?? true) && before) { map.setRenderWorldCopies(next.renderWorldCopies ?? true); map.jumpTo({}); }
@@ -1268,7 +1269,7 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         // (`fitPadding` is space for this one fit; the padding of the map belongs to the description.)
         // (The old names of the two options of a fit are left out, so that `padding` does not reach the camera; #1147.)
         if ('padding' in view || 'maxZoom' in view) { check(1147, name + '()', view); const {padding: _p, maxZoom: _m, ...rest} = view as MoveToOptions & {padding?: unknown; maxZoom?: unknown}; view = rest; }
-        if (bounds) { const fit = map.cameraForBounds(bounds as LngLatBoundsInput, {padding: fitPadding, maxZoom: fitMaxZoom}); view = {bearing: fit.bearing, ...view, center: [fit.center.lng, fit.center.lat], zoom: fit.zoom}; }
+        if (bounds) { const fit = map.cameraForBounds(bounds as LngLatBoundsInput, {padding: fitPadding, maxZoom: fitMaxZoom, bearing: view.bearing}); view = {bearing: fit.bearing, ...view, center: [fit.center.lng, fit.center.lat], zoom: fit.zoom}; }
         else if (fitPadding !== undefined || fitMaxZoom !== undefined) check(7);
         if (fly) map.flyTo({...view, duration, ...(fly === true ? {} : fly)}); else if (duration) map.easeTo({...view, duration}); else map.jumpTo(view);
     };

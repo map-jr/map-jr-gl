@@ -8,7 +8,8 @@ import type {Placed, RenderItem} from './placement.ts';
 import {demUnpack, type DemEncoding} from './query.ts';
 import {lineMiddle, BASELINE, EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
 
-const HEAD = '#version 300 es\nprecision highp float;\n';
+// (The build writes `L(0)` for `layout(location=0) in`: scripts/minify-shaders.mjs.)
+const HEAD = '#version 300 es\n#define L(n) layout(location=n) in\nprecision highp float;\n';
 /** Shared by the map-space programs: u_matrix takes tile units (and meters of height) to clip space. */
 export const VS_COMMON = `uniform mat4 u_matrix; uniform vec2 u_view;
 #ifdef GLOBE

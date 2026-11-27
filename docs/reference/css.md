@@ -45,7 +45,7 @@ The map sets these classes, which a rule of the page can select:
 | Class | Element | When |
 |---|---|---|
 | `map-jr-dark` | The container | While the resolved `colorScheme` is `'dark'`. |
-| `map-jr-unavailable` | An element that fills the container | The browser has no WebGL2: see [A browser without WebGL2](create-map.md#a-browser-without-webgl2). |
+| `map-jr-unavailable` | An element that fills the container, or a bar over its top edge when the container has a first view from the server | The browser has no WebGL2: see [A browser without WebGL2](create-map.md#a-browser-without-webgl2). |
 | `map-jr-pseudo-fullscreen` | The container | The control `fullscreen()` fills the window in a browser without the Fullscreen API. |
 | `map-jr-ctrl-shrink` | The button of the control `fullscreen()` | While the map fills the screen. |
 | `map-jr-ctrl-terrain-enabled` | The button of the control `terrain()` | While the map has terrain. |
