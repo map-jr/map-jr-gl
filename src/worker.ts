@@ -9,13 +9,17 @@ import {part, setPartLoader, type PartName} from './parts.ts';
 // out, and reads them from `MapJrWorker`, the global of this file (see build.mjs).
 export {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, clamp, keepSize, latFromMerc, lngFromMerc, mercX, mercY, touches} from './geo.ts';
 export {SHADERS, VS_COMMON, FS_CLIP, opaque, skyValues} from './gl.ts';
-export {renderItems} from './placement.ts';
-export {compileExpr, compileFilter, parseColor, warnOnce} from './expr.ts';
-export {SPEC, LIGHT_PROPS} from './style.ts';
-export {decodeElevation} from './query.ts';
+export {boxAround, flatSize, perspective, quadBox, renderItems} from './placement.ts';
+export {compileExpr, compileFilter, compileProp, parseColor, pickImage, warnOnce} from './expr.ts';
+export {SPEC, LIGHT_PROPS, isGeometrySource, screenTranslate, tileURL} from './style.ts';
+export {decodeElevation} from './elevation.ts';
 export {decodePixels} from './exact-pixels.ts';
 export {heads} from './tile-fetch.ts';
-export {earcut} from './tile.ts';
+export {earcut, overlaps} from './tile.ts';
+export {decodeVectorTile} from './mvt.ts';
+export {GEOJSON_LAYER} from './geojson.ts';
+export {VARIANT} from './markers.ts';
+export {BASELINE, EM} from './text.ts';
 
 /** One worker script, two roles: a tile parser, or the host of the whole rendering engine. */
 const scope = self as unknown as {onmessage: ((e: MessageEvent) => void) | null; postMessage(m: unknown): void; importScripts(url: string): void; MapJrPart?: unknown};

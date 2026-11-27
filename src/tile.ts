@@ -795,7 +795,9 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
                     const d = dist[(i - s + n - 1) % n] ?? 0;
                     const q = vert(ax, ay, bottom, low, d + len);
                     vert(bx, by, bottom, low, d); vert(bx, by, top, high, d); vert(ax, ay, top, high, d + len);
-                    idx.push(q, q + 1, q + 2, q, q + 2, q + 3);
+                    // (The renderer draws one side of each face, so the outside of a wall winds as the roof does: a ring wound
+                    // the other way turns the two triangles round; see `drawLayers` in gl.ts.)
+                    if (out > 0) idx.push(q, q + 1, q + 2, q, q + 2, q + 3); else idx.push(q, q + 2, q + 1, q, q + 3, q + 2);
                 }
             }
             centroid();

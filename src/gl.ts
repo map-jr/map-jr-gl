@@ -5,7 +5,7 @@ import type {Sky} from './resolve.ts';
 import {LOSE_CONTEXT} from './gl-names.ts';
 import {LINE_VERTEX, WALL_OTHER, WALL_TOP, patternKey, type GLBatch, type IconBatch, type LabelSrc, type TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
-import {demUnpack, type DemEncoding} from './query.ts';
+import {demUnpack, type DemEncoding} from './elevation.ts';
 import {lineMiddle, BASELINE, EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
 
 // (The build writes `L(0)` for `layout(location=0) in`: scripts/minify-shaders.mjs.)
@@ -54,6 +54,23 @@ function padDem(w: number, h: number, data: Uint8Array): Uint8Array {
         px.fill(px[o + w + 1], o + w + 2, o + W);
     }
     return out;
+}
+
+/**
+ * The column-major 3x3 matrix that takes a pixel of the target (`gl_FragCoord`) to the flat ground, in the units of the
+ * tile whose matrix is `m`: the inverse of the tile matrix at height 0, followed by the viewport.
+ */
+export function screenToTile(m: ArrayLike<number>, [w, h]: number[]): number[] {
+    // The rows of the pixel (x, y) and of the depth w, times w, for the tile point (u, v, 1).
+    const r = [0, 1, 3].map(c => [w / 2 * (m[c * 4] + m[c * 4 + 3]), h / 2 * (m[c * 4 + 1] + m[c * 4 + 3]), m[c * 4 + 3]]);
+    const [[a, d, g], [b, e, k], [c, f, i]] = r, A = e * i - f * k, B = f * g - d * i, C = d * k - e * g, det = a * A + b * B + c * C;
+    return [A, B, C, c * k - b * i, a * i - c * g, b * g - a * k, b * f - c * e, c * d - a * f, a * e - b * d].map(v => v / det);
+}
+
+/** The rectangle `clip` of the tile `id` in the units of the tile `ref` (exact, so that neighbor tiles share their edges). */
+export function clipIn(ref: TileID, id: TileID, clip: number[]): number[] {
+    const k = 2 ** (ref.z - id.z), ox = ((id.x + id.w * 2 ** id.z) * k - ref.x - ref.w * 2 ** ref.z) * EXTENT, oy = (id.y * k - ref.y) * EXTENT;
+    return clip.map((v, i) => v * k + (i % 2 ? oy : ox));
 }
 
 const SQUARE = [0, 0, EXTENT, 0, EXTENT, EXTENT, 0, EXTENT], ONES = [1, 1, 1, 1, 0];
@@ -200,7 +217,7 @@ void main() {
   e = (side == 0.0 ? a_v.zw : e) * v_hw; vec4 q = toClip(o + e * ls);
   v_persp = length(e) / length((q.xy - toClip(o).xy) / q.w * u_view * 0.5);
 }`, `
-uniform vec4 u_color; uniform vec4 u_clip; uniform vec4 u_dash; uniform float u_dashScale; uniform float u_blur;
+uniform vec4 u_color; uniform vec4 u_clip; uniform vec4 u_dash; uniform float u_dashScale; uniform float u_blur; uniform mat3 u_screen;
 in float v_blur; in float v_gap; in float v_aa;
 uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex; uniform vec2 u_patSize;
 uniform int u_cap;
@@ -209,7 +226,13 @@ float outside(float t, float from, float to) { return max(max(from - t, t - to),
 float span(float t, float from, float to, float p, bool keep) { return keep || to > from ? min(outside(t, from, to), min(outside(t, from - p, to - p), outside(t, from + p, to + p))) : 99.0; }
 in vec4 v_color; in vec2 v_tile; in float v_d; in float v_hw; in float v_w; in float v_dist; in float v_persp; in float v_fw; out vec4 o;
 void main() {
-  ${FS_CLIP}
+  // On a flat map the tile of a pixel comes from its place on the screen (u_screen takes it to the units of one tile
+  // of the layer, and u_clip is in those units), as the stencil of MapLibre GL JS does: each pixel then belongs to one
+  // tile exactly. Two neighbor tiles that both draw a line across their edge would otherwise both keep or both drop
+  // some pixels of the edge, because each interpolates its v_tile with its own error (#2443). On the globe u_screen is
+  // zero, and v_tile decides.
+  vec3 g = u_screen * vec3(gl_FragCoord.xy, 1.0); vec2 p = g.xy / g.z;
+  if (u_screen[2] == vec3(0.0)) { ${FS_CLIP} } else if (p.x < u_clip.x || p.y < u_clip.y || p.x >= u_clip.z || p.y >= u_clip.w) discard;
   vec4 c = v_color * u_color;
   if (u_patSize.x != 0.0) c = vec4(1.0, 1.0, 1.0, c.a);
   float bl = v_persp * (v_aa + u_blur + v_blur), a = c.a * clamp((v_hw - abs(v_d)) / bl, 0.0, 1.0); // line-blur widens the soft edge
@@ -1299,7 +1322,7 @@ export class GLRenderer {
                 }
                 if (own) continue;
             }
-            let first = true;
+            let first = true, screen: number[] | undefined;
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
             const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [];
             let patImg: Parameters<typeof bindImage>[1] | undefined;
@@ -1310,6 +1333,10 @@ export class GLRenderer {
                 gl.clear(s.terrain || this.extrusionDepth ? gl.STENCIL_BUFFER_BIT : gl.DEPTH_BUFFER_BIT | gl.STENCIL_BUFFER_BIT);
                 this.extrusionDepth = true;
                 gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
+                // Only the front faces are drawn, as in MapLibre GL JS: the inside of a wall that floats above the ground
+                // of 3D terrain does not show (#2341). The roof and the outside of each wall wind clockwise on the screen
+                // (see tessellateExtrusion), so the faces that WebGL calls front faces are the ones left out.
+                gl.enable(gl.CULL_FACE); gl.cullFace(gl.FRONT);
             }
             draw: for (const it of patterned ? [] : items) for (const b of parts(it, L.id)) {
                 const u = use(b.type), m = moved(it), sh = shift(it);
@@ -1400,6 +1427,9 @@ export class GLRenderer {
                     gl.uniform1f(u.u_cam, tr.cameraDistance);
                 }
                 if (b.type === 'line') {
+                    // The part of the screen that is this tile's, in the units of the layer's first tile (see the line shader, #2443).
+                    gl.uniformMatrix3fv(u.u_screen, false, screen ??= this.globe ? new Array(9).fill(0) : screenToTile(items[0].matrix4, target));
+                    if (!this.globe) gl.uniform4fv(u.u_clip, clipIn(items[0].id, it.id, it.clip));
                     // Dashes are sized at whole zoom levels so they stretch, rather than crawl, while zooming.
                     gl.uniform1f(u.u_dashScale, it.scale / 2 ** (zoom - Math.floor(zoom)));
                 }
@@ -1448,6 +1478,7 @@ export class GLRenderer {
                 gl.depthMask(true);
                 gl.disable(gl.STENCIL_TEST);
                 gl.disable(gl.DEPTH_TEST);
+                gl.disable(gl.CULL_FACE);
             }
         }
 
