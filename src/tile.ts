@@ -71,6 +71,8 @@ export interface Batch {
     /** Building extrusions: per-feature top and bottom heights in meters. */
     height?: Float32Array;
     base?: Float32Array;
+    /** The height and the base are the same for the whole layer: the page draws them at the zoom of the map, so that they transition (#972). The batch has height 1 and base 0. */
+    lift?: boolean;
     /** Building extrusions with fill-extrusion-pattern: the walls carry the distance along their ring, for the image. */
     ed?: boolean;
     /** A pattern with a value for each feature: the image of the features of this batch (see `patternKey`). */
@@ -99,6 +101,8 @@ export interface LabelSrc {
     /** With `line`: `symbol-spacing` in tile units, tile units per pixel, the over-scaling of the tile, the stretch of line kept for curved text, and the zoom of the tile. */
     lineSpacing?: number; tpr?: number; ov?: number; window?: number; tz?: number;
     size0: number; size1: number; color: RGBA; halo: RGBA; haloWidth: number; haloBlur: number;
+    /** `text-opacity` when it has a value for each feature, else 1. It is in `color` and `halo` too; the page multiplies a color of the layer by it. */
+    op: number;
     /** How the lines of a multi-line label align with each other: -1 left, 0 center, 1 right. */
     justify: number;
     /** `text-rotate`, in radians clockwise. */
@@ -147,7 +151,7 @@ export interface TileIR { layers: Record<string, Batch>; labels: Record<string, 
 
 export type GLBatch = {/** See `Batch.pat`. */ pat?: string} & (
     | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
-    | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array; /** The centroid of each vertex's polygon, in tile units: on 3D terrain the ground under it lifts the polygon. */ c: Int16Array}
+    | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array; /** See `Batch.lift`. */ lift?: boolean; /** The centroid of each vertex's polygon, in tile units: on 3D terrain the ground under it lifts the polygon. */ c: Int16Array}
     | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** See `Batch.feat`, for each vertex. */ feat?: Float32Array; featMask?: number; /** See `Batch.most`. */ most?: number[]}
     | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array; /** Each point is a grid of 4 × 4 corners, in sevenths (see `tessellate`). */ grid?: boolean; /** See `Batch.stroke`, `Batch.sb`, `Batch.feat` and `Batch.stroke1`, for each vertex. */ stroke?: Uint8Array; sb?: Float32Array; feat?: Float32Array; featMask?: number; stroke1?: Uint8Array});
 export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; expires?: number; etag?: string;
@@ -238,7 +242,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 // `text-pitch-alignment` and `icon-pitch-alignment`: `auto` follows the rotation alignment.
                 const flat = (pitch: unknown, alignment: unknown) => pitch === 'map' || (pitch !== 'viewport' && !turns(alignment));
                 const base = {
-                    text, size0: p.size.eval(zs, f), size1: p.size.eval(z1, f),
+                    text, size0: p.size.eval(zs, f), size1: p.size.eval(z1, f), op,
                     color: [color[0], color[1], color[2], color[3] * op] as RGBA,
                     halo: [haloColor[0], haloColor[1], haloColor[2], haloColor[3] * op] as RGBA, haloWidth: p.haloWidth.eval(zs, f), haloBlur: p.haloBlur.eval(zs, f), rotate: p.rotate.eval(zs, f) * Math.PI / 180, justify: justification(p.justify.eval(zs, f), p.anchor.eval(zs, f)), font: fontKey(p.font.eval(zs, f)),
                     maxWidth: p.maxWidth.eval(zs, f), spacing: p.spacing.eval(zs, f), offset: p.offset.eval(zs, f), anchor: p.anchor.eval(zs, f),
@@ -350,7 +354,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
         } else groups.push(['', features]);
         let k = 0;
         for (const [pat, fs] of groups) {
-            const heights: number[] = [], bases: number[] = [];
+            const heights: number[] = [], bases: number[] = [], lift = extrude && !p.height.dd && !p.base.dd;
             const want = kind === 'fill' ? 3 : kind === 'circle' ? 1 : 0;
             const coords: number[] = [], ringEnds: number[] = [], featEnds: number[] = [];
             const ddColor = p.color.dd || p.opacity.dd;
@@ -412,7 +416,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 if (circle) { dz(0, sw); dz(1, cb); }
                 if (progress) progress.push(f.properties.mapbox_clip_start ?? 0, f.properties.mapbox_clip_end ?? 1);
                 // (As in MapLibre GL JS, a negative height or base is 0.)
-                if (extrude) heights.push(Math.max(0, p.height.eval(zs, f))), bases.push(Math.max(0, p.base.eval(zs, f)));
+                if (extrude) heights.push(lift ? 1 : Math.max(0, p.height.eval(zs, f))), bases.push(lift ? 0 : Math.max(0, p.base.eval(zs, f)));
             }
             if (!featEnds.length) continue;
             const batch: Batch = {
@@ -429,7 +433,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (ddSb) batch.sb = Float32Array.from(sb);
             if (stroke1?.some((c, i) => c !== stroke[i])) batch.stroke1 = Uint8Array.from(stroke1);
             interleaveFeat(batch, feats);
-            if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); if (pat || p.pattern.zoom || p.pattern.eval(zs)) batch.ed = true; }
+            if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); batch.lift = lift || undefined; if (pat || p.pattern.zoom || p.pattern.eval(zs)) batch.ed = true; }
             if (line) { batch.cap = p.cap.eval(zs); batch.join = p.join.eval(zs); batch.miterLimit = p.miterLimit.eval(zs); batch.roundLimit = p.roundLimit.eval(zs); batch.sharp = ov > 16 ? 0 : 15 * EXTENT / 512 / ov; }
             if (L.type === 'fill') { batch.outline = p.outline.eval(zs)[3] > 0; batch.antialias = p.antialias.eval(zs) !== false; }
             if (pat) batch.pat = pat;
@@ -795,7 +799,9 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
                     const d = dist[(i - s + n - 1) % n] ?? 0;
                     const q = vert(ax, ay, bottom, low, d + len);
                     vert(bx, by, bottom, low, d); vert(bx, by, top, high, d); vert(ax, ay, top, high, d + len);
-                    idx.push(q, q + 1, q + 2, q, q + 2, q + 3);
+                    // (The renderer draws one side of each face, so the outside of a wall winds as the roof does: a ring wound
+                    // the other way turns the two triangles round; see `drawLayers` in gl.ts.)
+                    if (out > 0) idx.push(q, q + 1, q + 2, q, q + 2, q + 3); else idx.push(q, q + 2, q + 1, q, q + 3, q + 2);
                 }
             }
             centroid();
@@ -805,7 +811,7 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
     // (cen has the first vertex, the end and the centroid of each polygon.)
     const c = new Int16Array(count * 2);
     for (let k = 0; k < cen.length; k += 4) for (let i = cen[k]; i < cen[k + 1]; i++) { c[i * 2] = cen[k + 2]; c[i * 2 + 1] = cen[k + 3]; }
-    return {type: 'extrusion', v: Float32Array.from(v), idx: Uint32Array.from(idx), color: perVertex(b.color, feats, featEnds.length), ed: b.ed ? Float32Array.from(ed) : undefined, c};
+    return {type: 'extrusion', v: Float32Array.from(v), idx: Uint32Array.from(idx), color: perVertex(b.color, feats, featEnds.length), ed: b.ed ? Float32Array.from(ed) : undefined, c, lift: b.lift};
 }
 
 const ARC_STEP = Math.PI / 5;

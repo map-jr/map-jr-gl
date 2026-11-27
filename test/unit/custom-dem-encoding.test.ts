@@ -3,7 +3,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {resolveStyle} from '../../src/resolve.ts';
-import {decodeElevation, demUnpack, sampleElevation} from '../../src/query.ts';
+import {decodeElevation, demUnpack, sampleElevation} from '../../src/elevation.ts';
 
 const resolved = async (source: object) => (await resolveStyle({version: 8, sources: {dem: {type: 'raster-dem', tiles: ['https://example.com/{z}/{x}/{y}.png'], ...source}}, layers: []} as any)).sources.dem.encoding;
 test('custom encoding: the source gives its factors and its shift, with the defaults 1, 1, 1 and 0', async () => {

@@ -445,13 +445,10 @@ that a map shows, pass its `center`, `zoom` and `bearing`.
 
 ## What the server renderer does not draw
 
-| Not drawn | What the render shows |
-|---|---|
-| Pitch | The view from straight above. |
-| Hillshade, color relief and 3D terrain | The other layers, on flat ground. |
-| Image patterns (`fill-pattern`, `background-pattern`) | Nothing for that layer. |
-| Images that a page adds with `map.addImage` of `@map-jr/map-jr-gl/maplibre-compat` | Nothing. Pass them as [`images`](../reference/server.md#images), or return them from [`resolveImage`](../reference/server.md#renderoptions). |
-| Images of `images` that are not SVG documents | Nothing for that image. |
+The server renderer draws the view from straight above, and it leaves out hillshade, color relief, heatmap layers,
+hollow lines, image patterns and 3D terrain. It writes one warning for each layer that it leaves out. The live map
+draws them when it takes over. [What the server renderer does not draw](../reference/server.md#what-the-server-renderer-does-not-draw)
+lists each case and what the render shows instead.
 
 The SVG uses the fonts of the page that shows it. Set `fontFamily` to the font of the live map. The server estimates
 the width of each label, so where labels are close together it can show a different label than the live map shows.
