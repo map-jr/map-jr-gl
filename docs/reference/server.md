@@ -63,6 +63,7 @@ that get their view later, and for an `interface` that adds members: an `interfa
 | `center` | `LngLatLike` | | The center of the view, `[lng, lat]`. |
 | `zoom` | `number` | | The zoom level of the view. |
 | `bearing` | `number` | `0` | The bearing of the view in degrees. |
+| `pitch` | `number` | `0` | Has no effect, because the server render draws every view flat. |
 | [`bounds`](#bounds-and-padding) | `LngLatBoundsInput` | | A box `[west, south, east, north]` to fit into the view. |
 | [`padding`](#bounds-and-padding) | `PaddingInput` | `0` | Space in CSS pixels around `bounds` for the fit: one number, or `{top, right, bottom, left}`. |
 | `fitMaxZoom` | `number \| null` | `maxZoom` of `renderFirstView`, else 22 | The highest zoom of the fit to `bounds`, as `initialView.fitMaxZoom` of the description. |
@@ -247,7 +248,7 @@ everything when it takes over in the browser.
 
 | Not drawn | What the render shows |
 |---|---|
-| Pitch | The view from straight above. |
+| Pitch | The view from straight above. A `pitch` other than 0 in the options or in the view of the description writes one warning (`E2513`) for each process. |
 | `hillshade`, `color-relief` and `heatmap` layers | Nothing for that layer. |
 | Lines with a `line-gap-width` above 0 | Nothing for that layer. |
 | 3D terrain | The layers on flat ground. |
