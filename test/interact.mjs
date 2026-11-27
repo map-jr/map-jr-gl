@@ -2235,6 +2235,35 @@ for (const mode of renderers) {
         check(`[${mode}] queryRenderedFeatures: a line with line-offset, also from a property, is found where it is drawn, as MapLibre GL JS, also in the array at once (#2001)`,
             ours.down === 'down' && ours.up === 'up' && ours.at === '' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
     }
+    // A line layer over a polygon draws its rings, so a query finds it near a ring and not inside the polygon, and a
+    // (#2094). The square has a ring of 4 pixels; its east side is queried at its middle and 15 pixels to the west.
+    {
+        const run = lib => page.evaluate(async ([lib, mode]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:300px;height:200px'}));
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]]}};
+            const m = new mod.Map({container: el, renderer: mode, center: [10, 10], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                sources: {p: {type: 'geojson', data: square}},
+                layers: [
+                    {id: 'fill', type: 'fill', source: 'p'},
+                    {id: 'ring', type: 'line', source: 'p', paint: {'line-width': 4}},
+                ]}});
+            await new Promise(r => m.once('idle', r));
+            const e = m.project([20, 10]), c = m.project([10, 10]), only = (pt, id) => [...new Set([...m.queryRenderedFeatures(pt, {layers: [id]})].map(f => f.layer.id))].join();
+            const out = {};
+            for (const id of ['ring']) for (const [name, pt] of Object.entries({inside: [c.x, c.y], edge: [e.x, e.y], west: [e.x - 15, e.y], east: [e.x + 15, e.y]})) {
+                out[`${id}-${name}`] = only(pt, id);
+                out[`later-${id}-${name}`] = [...new Set((await m.queryRenderedFeatures(pt, {layers: [id]})).map(f => f.layer.id))].join();
+            }
+            m.remove(); el.remove();
+            return out;
+        }, [lib, mode]);
+        const ours = await run('ours'), ml = await run('ml');
+        check(`[${mode}] queryRenderedFeatures: a line layer over a polygon finds the ring and not the inside, as MapLibre GL JS (#2094)`,
+            ours['ring-inside'] === '' && ours['ring-edge'] === 'ring' && JSON.stringify(ours) === JSON.stringify(ml), JSON.stringify({ours, ml}));
+    }
+
     // #2217: with line-offset, a miter join longer than 2 (line-miter-limit 4, a turn of 133 degrees, miter 2.5) moves
     // twice the offset along the miter, as MAX_OFFSET_MITER_LENGTH of MapLibre GL JS does. Before, it moved the full
     // miter, and the tip reached about 4 px farther. (The bisector of the corner lies near a diagonal of the tile, so
