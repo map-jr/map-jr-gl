@@ -344,7 +344,7 @@ export class Map {
         // As in MapLibre, `bounds` comes before `center` and `zoom`: the map starts with that area in view.
         // (The padding of the map is in place for the first fit, so that the box fits into the free part; the main API passes it, #1162.)
         if (options.startPadding !== undefined) this.tr.padding = paddingOf(options.startPadding);
-        if (options.bounds) { const fit = this.cameraForBounds(options.bounds, options.fitBoundsOptions); this.tr.set([fit.center.lng, fit.center.lat], fit.zoom, options.bearing ?? 0, options.pitch ?? 0); }
+        if (options.bounds) { const fit = this.cameraForBounds(options.bounds, {bearing: options.bearing, ...options.fitBoundsOptions}); this.tr.set([fit.center.lng, fit.center.lat], fit.zoom, options.bearing ?? 0, options.pitch ?? 0); }
         // As in MapLibre, `interactive: false` turns every handler off, and `enable()` on one turns it on later (#196).
         // The map still fires its mouse events (#253), and a touch scrolls the page until a handler is enabled.
         const still = options.interactive === false;

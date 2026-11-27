@@ -267,6 +267,23 @@ for (const renderer of renderers) {
         }, renderer);
         check(`[${renderer}] initialView.bounds is fitted into the part that the padding of the description leaves free (#1162)`,
             Math.abs(firstFit.first - firstFit.later) < 1e-6, JSON.stringify(firstFit));
+        // 2c. A fit of a box at a bearing keeps every corner of the box in view, for initialView and for moveTo (#1686).
+        const turned = await page.evaluate(async renderer => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:800px;height:600px'}));
+            const bounds = [[-74.1, 40.70], [-73.9, 40.72]], corners = [[-74.1, 40.70], [-74.1, 40.72], [-73.9, 40.70], [-73.9, 40.72]];
+            const outside = m => corners.filter(c => { const p = m.project(c); return p.x < -0.5 || p.y < -0.5 || p.x > 800.5 || p.y > 600.5; }).length;
+            const h = t.lib.createMap(el, {style: t.style, initialView: {bounds, bearing: 45}, renderer, attribution: false});
+            await wait(300);
+            const first = outside(h._map), firstZoom = h._map.getZoom();
+            h.moveTo({bounds, bearing: 90});
+            await wait(300);
+            const later = outside(h._map);
+            h.destroy(); el.remove();
+            return {first, firstZoom, later};
+        }, renderer);
+        check(`[${renderer}] a fit of bounds at a bearing keeps every corner of the box in view (#1686)`,
+            turned.first === 0 && turned.later === 0 && turned.firstZoom < 11.4, JSON.stringify(turned));
         // 2c. After a lost WebGL context, the new engine has the padding of the description (#1050). The camera that the
         // engine reports after a move carries its padding.
         if (renderer === 'main') {
