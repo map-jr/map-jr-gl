@@ -1453,6 +1453,14 @@ server render: "<option name>" is <size>. Pass the <option name> in CSS pixels a
 server render: "<option name>" is <size>. Pass the <option name> in CSS pixels as a number greater than 0, for example <option name>: 500.
 ```
 
+## E1683
+
+A warning of the main API (development build only).
+
+```text
+<where>: this is a <group> property. The map reads it here all the same, but MapLibre GL JS rejects the style. Move it to "<group>".
+```
+
 ## E1692
 
 A warning of the main API (development build only).
@@ -2087,6 +2095,14 @@ An error of the server renderer.
 
 ```text
 server render: the options have "zoom" but no "center", and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".
+```
+
+## E11683
+
+An error of the main API (development build only).
+
+```text
+<where>: unknown property "<property>". The map reads it here all the same, but it is a <group> property, and MapLibre GL JS rejects the style. Move it to "<group>".
 ```
 
 ## E11846

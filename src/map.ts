@@ -2338,7 +2338,7 @@ export class Map {
                         let total = f.angle - g.startAngle;
                         total = Math.atan2(Math.sin(total), Math.cos(total));
                         g.rotating = Math.abs(total) * f.dist / 2 > 25;
-                    } else if (this.touchZoomRotate.rotation) this.post({type: 'rotate', delta: -turn * 180 / Math.PI});
+                    } else if (this.touchZoomRotate.rotation) { const c = {type: 'rotate' as const, delta: -turn * 180 / Math.PI}; this.post(c); this.turned = (c as {seq?: number}).seq!; }
                 }
                 // Until the gesture is decided, keep measuring from where it began so no movement is lost.
                 if (g.mode !== 'undecided') { g.dist = f.dist; g.angle = f.angle; g.mid = f.mid; }

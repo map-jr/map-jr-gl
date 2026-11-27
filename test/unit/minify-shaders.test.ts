@@ -34,3 +34,8 @@ test('a run of declarations at the start of a template, after a line break, is m
     const code = 'const fs = `\nuniform sampler2D u_a; uniform vec4 u_b; uniform sampler2D u_c; in vec2 v_x; out vec4 o; void main() {}`;';
     assert.equal(apply(code), 'const fs = `uniform sampler2D u_a,u_c;uniform vec4 u_b;in vec2 v_x;out vec4 o;void main(){}`;');
 });
+
+test('a block comment goes from a shader, and a block comment in a line comment goes with that line (#2342)', () => {
+    const code = 'const vs = `uniform float u_a; /* the halves of\na unit */ void main() { // a /* b\n    gl_Position = vec4(u_a); }`;';
+    assert.equal(apply(code), 'const vs = `uniform float u_a;void main(){gl_Position=vec4(u_a);}`;');
+});
