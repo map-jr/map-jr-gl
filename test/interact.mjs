@@ -1649,6 +1649,8 @@ for (const mode of renderers) {
             m.addFonts({'F1191b Regular': '/fonts1191/b.ttf'});
             await new Promise(r => setTimeout(r, 1500));
             m.remove(); el.remove();
+            // (The faces stay in `document.fonts` after the map is removed: take them out, so that later checks do not see them.)
+            for (const f of [...document.fonts]) if (f.family.includes('F1191')) document.fonts.delete(f);
         });
         await page.unroute(/\/fonts1191\//);
         check(`fonts: the option and addFonts of the compat Map take an object of font faces and fetch each file (#1191)`,
