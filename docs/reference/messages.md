@@ -1678,7 +1678,7 @@ The production build prints this:
 ```
 
 ```text
-updateImage("<image name>"): the image is <width>×<height>, but the new one is <newWidth>×<newHeight>. Pass an image of the same size, or call removeImage() and then addImage().
+<method>("<image name>"): the image is <width>×<height>, but the new one is <newWidth>×<newHeight>. Pass an image of the same size, or call removeImage() and then addImage().
 ```
 
 ## E2272
