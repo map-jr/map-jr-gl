@@ -1,33 +1,33 @@
 {
   "maplibre": "6.17.0",
   "unitTests": {
-    "pass": 525,
+    "pass": 549,
     "fail": 0
   },
   "sizes": [
     {
       "file": "Page script of `@map-jr/map-jr-gl`",
-      "bytes": 50295,
+      "bytes": 50594,
       "maplibreBytes": 307262
     },
     {
       "file": "Page script of `@map-jr/map-jr-gl/maplibre-compat`",
-      "bytes": 59779,
+      "bytes": 60127,
       "maplibreBytes": 307262
     },
     {
       "file": "Worker file",
-      "bytes": 84255,
+      "bytes": 85829,
       "maplibreBytes": 148473
     },
     {
       "file": "Page script and worker file of `@map-jr/map-jr-gl`",
-      "bytes": 134550,
+      "bytes": 136423,
       "maplibreBytes": 455735
     },
     {
       "file": "Page script and worker file of `@map-jr/map-jr-gl/maplibre-compat`",
-      "bytes": 144034,
+      "bytes": 145956,
       "maplibreBytes": 455735
     },
     {
@@ -37,7 +37,7 @@
     },
     {
       "file": "Server renderer",
-      "bytes": 60800,
+      "bytes": 61645,
       "maplibreBytes": null
     }
   ],
@@ -98,7 +98,7 @@
     },
     {
       "area": "MapLibre render tests, the same",
-      "passing": 1367,
+      "passing": 1384,
       "total": 1758,
       "details": {
         "text": "Render tests",
@@ -107,7 +107,7 @@
     },
     {
       "area": "MapLibre render tests, the same or near",
-      "passing": 1631,
+      "passing": 1635,
       "total": 1758,
       "details": {
         "text": "Render tests",
@@ -129,30 +129,30 @@
     "fewerExpressionInputs": 2
   },
   "renderTests": {
-    "differ": 127,
+    "differ": 123,
     "differWontfix": 21,
-    "differLater": 51,
+    "differLater": 47,
     "skipped": 2
   },
   "speed": {
-    "date": "2026-11-26T19:53:50.084Z",
-    "commit": "3f544f18f7226fcc4de2abe135596dea2f9fca76",
+    "date": "2026-11-27T01:08:55.635Z",
+    "commit": "8a80e44a330eb1e784a339b32ea8082898d29ca6",
     "rows": [
       {
         "system": "macOS",
         "browser": "Chromium",
         "renderer": "worker",
         "load": {
-          "maplibre": 1219.249999999971,
-          "mapJr": 577.7000000000262
+          "maplibre": 1273.8499999999767,
+          "mapJr": 705.6999999999971
         },
         "moving": {
-          "maplibre": 30.379743049327995,
-          "mapJr": 26.55549628926846
+          "maplibre": 26.505969139672423,
+          "mapJr": 26.282522945467708
         },
         "markers": {
-          "maplibre": 1.6633008847019992,
-          "mapJr": 21.731028428680947
+          "maplibre": 2.424331029615084,
+          "mapJr": 20.834758780485053
         }
       },
       {
@@ -160,33 +160,16 @@
         "browser": "WebKit",
         "renderer": "worker",
         "load": {
-          "maplibre": 1637.5,
-          "mapJr": 718.5
+          "maplibre": 1828,
+          "mapJr": 920.5
         },
         "moving": {
-          "maplibre": 53.77557100297915,
-          "mapJr": 49.98985036284952
+          "maplibre": 49.36289765051737,
+          "mapJr": 52.697224569301916
         },
         "markers": {
-          "maplibre": 4.008891658749647,
-          "mapJr": 54.299906392487244
-        }
-      },
-      {
-        "system": "Linux",
-        "browser": "Chromium",
-        "renderer": "worker",
-        "load": {
-          "maplibre": 662.5,
-          "mapJr": 484.59999999999127
-        },
-        "moving": {
-          "maplibre": 8.708405903382575,
-          "mapJr": 8.9401457243754
-        },
-        "markers": {
-          "maplibre": 2.6120820668693296,
-          "mapJr": 10.839698505129887
+          "maplibre": 3.031948795748539,
+          "mapJr": 53.317093943780534
         }
       },
       {
@@ -194,33 +177,16 @@
         "browser": "Firefox",
         "renderer": "worker",
         "load": {
-          "maplibre": 1316,
-          "mapJr": 573
+          "maplibre": 1324,
+          "mapJr": 645
         },
         "moving": {
-          "maplibre": 19.06412478336222,
-          "mapJr": 59.70149253731343
+          "maplibre": 17.97945205479452,
+          "mapJr": 60.150375939849624
         },
         "markers": {
-          "maplibre": 8.074690890739339,
-          "mapJr": 44.22979156075241
-        }
-      },
-      {
-        "system": "Linux",
-        "browser": "WebKit",
-        "renderer": "worker",
-        "load": {
-          "maplibre": 2596,
-          "mapJr": 898
-        },
-        "moving": {
-          "maplibre": 11.022927689594358,
-          "mapJr": 9.965337954939342
-        },
-        "markers": {
-          "maplibre": 2.0533880903490758,
-          "mapJr": 12.940877949758946
+          "maplibre": 5.5193176116407425,
+          "mapJr": 43.78238341968912
         }
       },
       {
@@ -228,16 +194,16 @@
         "browser": "Chromium",
         "renderer": "worker",
         "load": {
-          "maplibre": 1276.0999999999767,
-          "mapJr": 1028.0999999999767
+          "maplibre": 1282.2000000000116,
+          "mapJr": 920.7000000000116
         },
         "moving": {
-          "maplibre": 18.672109079855645,
-          "mapJr": 13.02247427011132
+          "maplibre": 17.10471422611598,
+          "mapJr": 10.48080702214113
         },
         "markers": {
-          "maplibre": 1.7654476670870114,
-          "mapJr": 27.341254631404116
+          "maplibre": 1.5231519090170773,
+          "mapJr": 37.24113635791773
         }
       },
       {
@@ -245,16 +211,16 @@
         "browser": "Firefox",
         "renderer": "worker",
         "load": {
-          "maplibre": 1246,
-          "mapJr": 622
+          "maplibre": 1160.5,
+          "mapJr": 846
         },
         "moving": {
-          "maplibre": 27.046639278932766,
-          "mapJr": 15.097351809471117
+          "maplibre": 23.084930108486137,
+          "mapJr": 10.550600967563009
         },
         "markers": {
-          "maplibre": 6.298690461733629,
-          "mapJr": 28.166486073541677
+          "maplibre": 5.293582088033936,
+          "mapJr": 25.126212302378107
         }
       },
       {
@@ -262,16 +228,16 @@
         "browser": "WebKit",
         "renderer": "worker",
         "load": {
-          "maplibre": 1887,
-          "mapJr": 978
+          "maplibre": 1015,
+          "mapJr": 628.5
         },
         "moving": {
-          "maplibre": 13.094718463553034,
-          "mapJr": 9.544468546637743
+          "maplibre": 18.26881621964988,
+          "mapJr": 15.26777161379032
         },
         "markers": {
-          "maplibre": 2.5926886180969664,
-          "mapJr": 14.496439471007122
+          "maplibre": 4.272182324088088,
+          "mapJr": 23.598087635429316
         }
       }
     ]
