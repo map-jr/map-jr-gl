@@ -1294,6 +1294,8 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
         return map.queryFeatures(at as FeaturePlace | undefined, o);
     };
     const querySource = (id: string, at?: FeaturePlace | SourceOptions, o: SourceOptions = {}): Promise<QueriedFeature[]> => {
+        // E10: The first argument of `querySource()` is the id of a source of the style, as a string. The call does not throw: the
+        // returned promise rejects with this error, so a call without `await` or `.catch()` shows it as an unhandled rejection.
         if (typeof id !== 'string') return reject(10, JSON.stringify(id) ?? String(id), 'querySource(): the first argument is not the id of a source.');
         if (isOptions(at)) { o = at as SourceOptions; at = undefined; }
         check(6, at, {...o, id});

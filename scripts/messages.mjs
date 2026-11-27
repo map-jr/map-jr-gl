@@ -3,13 +3,16 @@
 //   node scripts/messages.mjs --check   fails when a message of src/ cannot be read, has a placeholder that says nothing,
 //                                       cannot be classed as a warning or an error, has no code or the code of another
 //                                       message, uses a code that was removed, or when docs/reference/messages.md differs
-//                                       from what --write makes
+//                                       from what --write makes, or when a paragraph comment `// E<code>: <text>` in src/
+//                                       (see below) is for a code that does not exist or is a second one for its code
 //   node scripts/messages.mjs --write   writes docs/reference/messages.md, and dist/messages.json when dist/ exists
 //   node scripts/messages.mjs --json    writes dist/messages.json only (build.mjs runs this)
 //
 // Each message has a code, `E` and a number, right after the prefix: `[map-jr-gl] E1846 workerUrl: ...`. The source writes
 // the code at the start of the text, and the texts of src/mistakes.ts take their number as their code. A new message takes
 // the number of its issue; a second one for the same issue takes that number plus 10000 (see docs/development/error-codes.md).
+// A code can have a paragraph of explanation (#2484): a comment `// E<code>: <text>` on the lines before the place in src/ that
+// raises it, which continues in the `//` lines that follow. --write puts it in the section of the code. See docs/development.md.
 // A code that leaves src/ stays in docs/reference/messages.md as removed, so that a link in an old log still works, and it
 // is not used again.
 //
@@ -375,8 +378,29 @@ for (const file of files) for (const [code, names] of productionNames(readFileSy
 /** What the production build prints for a code, with each value as `name=…`; nothing for a message that production does not have. */
 const production = (code, x) => /development build only|server renderer/.test(entryOf(code, x.file)) ? ''
     : `\`Production build\`\n\n\`\`\`text\n[map-jr-gl] ${x.texts.some(t => t.startsWith(`${PREFIX} <method>(): `)) ? '<method>(): ' : ''}E${code} ${LINK}${code}${(valueNames.get(code) ?? []).map(n => ` ${n}=…`).join('')}\n\`\`\`\n\n`;
+/**
+ * The paragraph of a code (#2484): a comment `// E<code>: <text>` in src/, on the lines before the place that raises the code.
+ * The paragraph goes on in each `//` line that follows directly, and it ends at a line that is not a `//` comment, at an empty
+ * `//` line, or at the next `// E<code>:` line. The lines are joined with one space. The build drops comments, so a paragraph adds no bytes.
+ */
+const paragraphs = new Map();
+for (const file of files) {
+    let open = null;
+    for (const line of readFileSync(path.join(root, 'src', file), 'utf8').split('\n')) {
+        const start = line.match(/^\s*\/\/ E(\d+): ?(.*)$/), more = line.match(/^\s*\/\/ (\S.*)$/);
+        if (start) { open = {code: +start[1], parts: [start[2].trim()], file}; (paragraphs.get(open.code) ?? paragraphs.set(open.code, []).get(open.code)).push(open); }
+        else if (open && more) open.parts.push(more[1].trim());
+        else open = null;
+    }
+}
+for (const [code, list] of paragraphs) {
+    if (!byCode.has(code)) problems.push(`${list[0].file}: the comment "// E${code}: ..." is a paragraph for a code that no message of src/ has. Use the code of the message that it explains.`);
+    else if (list.length > 1) problems.push(`E${code} has ${list.length} paragraphs (${list.map(x => x.file).join(', ')}). Keep one comment "// E${code}: ..." in src/.`);
+    for (const x of list) if (!x.parts.join('').length) problems.push(`${x.file}: the comment "// E${code}:" has no text. Write the paragraph after the colon.`);
+}
+const paragraphOf = code => { const x = paragraphs.get(code)?.[0]; return x ? x.parts.join(' ').trim() + '\n\n' : ''; };
 const sections = new Map();
-for (const [code, x] of byCode) sections.set(code, `## E${code}\n\n${tags(code, x)}\n\n` + production(code, x) + (production(code, x) ? '`Development build`\n\n' : '') + x.texts.map(t => '```text\n' + plain(t) + '\n```').join('\n\n'));
+for (const [code, x] of byCode) sections.set(code, `## E${code}\n\n${tags(code, x)}\n\n` + paragraphOf(code) + production(code, x) + (production(code, x) ? '`Development build`\n\n' : '') + x.texts.map(t => '```text\n' + plain(t) + '\n```').join('\n\n'));
 for (const [code, section] of before) if (!byCode.has(code)) sections.set(code, isRemoved(section) ? section : section.replace(/\n\n/, `\n\nRemoved after ${pkg.version}.\n\n`));
 const page = `# Messages
 
