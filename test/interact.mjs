@@ -3280,6 +3280,28 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures: text on a line does not widen the query of a line with an icon, a glyph belongs to the street under it, and at pitch 60 the glyph boxes are centered on the line (#1735)',
             lineText.icon[0] === 'V' && lineText.icon[1] === '' && lineText.cross === 'A long label along the line' && lineText.pitch[0] < -5 && Math.abs(lineText.pitch[0] + lineText.pitch[1]) <= 2, JSON.stringify(lineText));
+        // A road that comes as three lines that meet end to end has one label, and the label belongs to one of the lines, as in
+        // MapLibre GL JS (#2460). A query of the whole view finds that line once, and a query on a glyph finds it where the glyph is,
+        // also over the part of the road that is another line. (The lines lie in one tile, and the label spans all three.)
+        const roadParts = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const line = (a, b) => ({type: 'Feature', properties: {name: 'A long label along the line'}, geometry: {type: 'LineString', coordinates: [a, b]}});
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const m = new mod.Map({container: el, renderer, center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [line([-40, 0], [-13, 0]), line([-13, 0], [13, 0]), line([13, 0], [40, 0])]}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-size': 16}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const y = m.project([0, 0]).y, found = [];
+                for (const lng of [-25, -5, 5, 25]) found.push((await m.queryRenderedFeatures([m.project([lng, 0]).x, y], {layers: ['t']})).length);
+                out[renderer] = {all: (await m.queryRenderedFeatures({layers: ['t']})).length, found};
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures finds the label of a road that comes as several lines once, with both renderers (#2460)',
+            ['main', 'worker'].every(r => roadParts[r].all === 1 && roadParts[r].found.every(n => n <= 1) && roadParts[r].found.filter(n => n === 1).length >= 3), JSON.stringify(roadParts));
         // On the globe a query finds text on a line where its glyphs are drawn, as MapLibre GL JS does: the line between
         // two of its points is a curve on the screen, and the glyphs lie on that curve (#1995). The map is cut into cells
         // of 25 pixels; each cell with dark pixels of the text must be found by a query of the cell, at zoom 2.5 and across
