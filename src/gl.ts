@@ -1,6 +1,6 @@
 import {EXTENT, clamp, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
 import {withFilter, mapTranslate, type CompiledLayer, type Light} from './style.ts';
-import {compileProp} from './expr.ts';
+import {compileProp, type Prop} from './expr.ts';
 import type {Sky} from './resolve.ts';
 import {LOSE_CONTEXT} from './gl-names.ts';
 import {LINE_VERTEX, WALL_OTHER, WALL_TOP, patternKey, type GLBatch, type IconBatch, type LabelSrc, type TileGL} from './tile.ts';
@@ -367,16 +367,18 @@ void main() {
     // Buildings: roofs and walls with a height in meters and a baked light level.
     extrusion: [`${VS_COMMON} ${TERRAIN_GLSL}
 layout(location=0) in vec4 a_v; layout(location=1) in vec4 a_color; layout(location=2) in float a_ed; layout(location=3) in vec2 a_centroid; out vec4 v_color; out vec2 v_p; out float v_side;
-uniform mat3 u_pat; uniform float u_hf; uniform float u_pattern; uniform vec4 u_color; uniform vec3 u_lightPos; uniform vec3 u_lightColor; uniform float u_lightIntensity; uniform float u_gradient;
+uniform mat3 u_pat; uniform float u_hf; uniform float u_pattern; uniform vec3 u_hb; uniform vec4 u_color; uniform vec3 u_lightPos; uniform vec3 u_lightColor; uniform float u_lightIntensity; uniform float u_gradient;
 void main() {
   // The light model of MapLibre. A face is brighter when it looks at the light; a dark color is made brighter by
   // more than a light color. Walls are darker near the ground (the vertical gradient).
   bool roof = a_v.w < 0.0; float other = floor(a_v.w / ${WALL_OTHER}.0), rest = a_v.w - other * ${WALL_OTHER}.0, t = rest >= ${WALL_TOP}.0 ? 1.0 : 0.0, angle = rest - t * ${WALL_TOP}.0 - ${Math.PI};
-  float base = t > 0.5 ? other : max(a_v.z, 0.0), height = t > 0.5 ? max(a_v.z, 0.0) : other;
+  float base = t > 0.5 ? other : max(a_v.z, 0.0), height = t > 0.5 ? max(a_v.z, 0.0) : other, z = a_v.z;
+  // (The height and the base of the layer, when the tile has 1 and 0 for them: see Batch.lift.)
+  if (u_hb.x > 0.5) { height = u_hb.y; base = min(u_hb.z, height); z = roof || t > 0.5 ? height : base; }
   vec3 normal = roof ? vec3(0.0, 0.0, 1.0) : vec3(cos(angle), sin(angle), 0.0);
   // fill-extrusion-pattern: the image lies flat on the roof and runs along the ring on the walls, as in MapLibre,
   // and the light alone sets the shade.
-  v_p = (u_pat * vec3(roof ? a_v.xy : vec2(a_ed, max(a_v.z, 0.0) * u_hf), 1.0)).xy;
+  v_p = (u_pat * vec3(roof ? a_v.xy : vec2(a_ed, max(z, 0.0) * u_hf), 1.0)).xy;
   // (As in MapLibre, a translucent color is multiplied by its alpha and then drawn solid; only the opacity of the layer shows through.)
   vec4 c = u_pattern > 0.5 ? vec4(1.0, 1.0, 1.0, u_color.a) : vec4(a_color.rgb * a_color.a * u_color.rgb, u_color.a);
   float value = u_pattern > 0.5 ? 0.5 : dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
@@ -388,7 +390,7 @@ void main() {
   v_side = horizonSide(a_v.xy);
   // On 3D terrain the whole polygon stands on the ground at its centroid, and a base of 0 reaches 10 m lower, so that
   // the walls go into a slope (as in MapLibre GL JS).
-  gl_Position = toClip3D(a_v.xy, a_v.z + ground(a_centroid / ${EXTENT}.0) - (u_exag != 0.0 && !roof && t < 0.5 && a_v.z <= 0.0 ? 10.0 : 0.0));
+  gl_Position = toClip3D(a_v.xy, z + ground(a_centroid / ${EXTENT}.0) - (u_exag != 0.0 && !roof && t < 0.5 && z <= 0.0 ? 10.0 : 0.0));
 }`, `
 uniform float u_pattern; in vec4 v_color; in vec2 v_p; in float v_side; out vec4 o; ${PATTERN_GLSL}
 // (Buildings are not cut at the edge of the tile, as in MapLibre GL JS. The piece of a building in the buffer of a tile
@@ -550,7 +552,7 @@ interface IconBuffers {
 }
 interface GLBuffers {
     type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; /** A circle with a buffer of the stroke color (1) or of the stroke width and blur (2) for each feature. */ stroke?: number; bufs: WebGLBuffer[];
-    edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string;
+    edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string; /** See `Batch.lift`. */ lift?: boolean;
     /** A heatmap on a globe below zoom 6: each point is a grid of corners in sevenths (see `tessellate`). */ grid?: boolean;
 }
 export interface GLTile {
@@ -869,7 +871,7 @@ export class GLRenderer {
                 index(b.idx);
                 count = b.idx.length;
             }
-            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat, grid: b.type === 'circle' && b.grid};
+            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat, grid: b.type === 'circle' && b.grid, lift: b.type === 'extrusion' && b.lift};
         }
         let icons: Record<string, IconBuffers> | undefined;
         for (const id in t.icons) {
@@ -1324,7 +1326,7 @@ export class GLRenderer {
             }
             let first = true, screen: number[] | undefined;
             // Buildings are the one layer that needs depth sorting; everything else is painted back to front.
-            const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [];
+            const extrude = L.type === 'fill-extrusion', pending: (() => void)[] = [], hb = extrude ? [L.p.height, L.p.base].map(q => q.dd ? 0 : Math.max(0, q.eval(zoom))) : [];
             let patImg: Parameters<typeof bindImage>[1] | undefined;
             if (extrude) {
                 // The fill-extrusion layers of a frame share one depth buffer, as in MapLibre GL JS, so the roof of one
@@ -1434,6 +1436,7 @@ export class GLRenderer {
                     gl.uniform1f(u.u_dashScale, it.scale / 2 ** (zoom - Math.floor(zoom)));
                 }
                 if (extrude) {
+                    gl.uniform3f(u.u_hb, +!!b.lift, hb[0], hb[1]);
                     // Depth first, color second: translucent buildings then blend once, with the nearest surface only.
                     gl.colorMask(false, false, false, false);
                     gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
@@ -1446,6 +1449,7 @@ export class GLRenderer {
                         gl.uniform4fv(u.u_clip, it.clip);
                         gl.bindVertexArray(b.vao);
                         if (!b.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
+                        gl.uniform3f(u.u_hb, +!!b.lift, hb[0], hb[1]);
                         gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
                     });
                 } else gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
@@ -1770,7 +1774,11 @@ export class GLRenderer {
 
     /** Draws placed labels: their icons, then their text in one pass for the halos and one for the fill. */
     private drawLabels(s: Scene, labels: Placed[]) {
-        const gl = this.gl, use = (name: ProgramName) => this.use(name, s.tr);
+        const gl = this.gl, use = (name: ProgramName) => this.use(name, s.tr), at = (q: Prop) => q.dd ? undefined : q.eval(s.tr.zoom);
+        // The paint values of each symbol layer that are the same for the whole layer, at the zoom of the map in this frame,
+        // so that they transition as in MapLibre GL JS and a change needs no new tiles (#972). A value for each feature is in the tile.
+        this.paint = new Map(s.layers.filter(L => L.type === 'symbol').map(({id, p}) => [id, [at(p.color), at(p.haloColor), at(p.haloWidth), at(p.haloBlur), at(p.opacity),
+            at(p.iconColor), at(p.iconHalo), at(p.iconHaloWidth), at(p.iconHaloBlur), at(p.iconOpacity)]]));
         // Style-sheet icons and images added at runtime live in different textures.
         for (const custom of [false, true]) {
             const icons = this.iconQuads(labels, custom, s.icon);
@@ -1887,6 +1895,8 @@ export class GLRenderer {
         this.sdfVersion = a.version;
     }
 
+    /** See `drawLabels`. */
+    private paint = new Map<string, any[]>();
     /** Kept between frames and grown when necessary, as `textData` is: icons are built again on each frame. */
     private iconData = new Float32Array(0);
     private iconQuads(labels: Placed[], custom: boolean, lookup?: Scene['icon']): Float32Array {
@@ -1913,13 +1923,15 @@ export class GLRenderer {
             for (let k = 1; k + 1 < q.length; k++) for (const v of [q[0], q[k], q[k + 1]]) vertex(v[0], v[1], v[2], v[3], alpha, tint);
         };
         const plain = [0, 0, 0, -1];
-        for (const {icon: i, opacity} of labels) {
+        for (const {icon: i, opacity, layer, src} of labels) {
             if (!i || !!i.custom !== custom || !(opacity > 0)) continue;
+            // (The paint values of the layer: see `paint`. In the distance field of a sprite, one image pixel is one eighth of the range.)
+            const P = this.paint.get(layer) ?? [], ic = src.icon!, hc = P[6] ?? ic.halo, haw = P[7] ?? ic.haloWidth, ring = i.color && haw > 0 && hc[3] > 0;
             // (An icon on the ground of a tilted map has a frame: where one pixel across and one pixel down it go.)
             const fr = i.frame, cos = fr ? fr[0] : Math.cos(i.angle), sin = fr ? fr[1] : Math.sin(i.angle), nx = fr ? fr[2] : -sin, ny = fr ? fr[3] : cos, [sx, sy, sw, sh] = i.rect;
             // Plain icons are one quad; stretched ones are a grid whose fixed cells keep their size.
             const gx = i.gx ?? [0, 0, sw, i.w], gy = i.gy ?? [0, 0, sh, i.h];
-            const col = i.color ?? plain, hw = i.w / 2, hh = i.h / 2;
+            const col = i.color ? P[5] ?? i.color : plain, hw = i.w / 2, hh = i.h / 2;
             // Upright icons are placed on whole device pixels. Between pixels, the texture filter would smear fine
             // detail such as a one-pixel outline into its neighbors. A distance field has no such detail, and
             // MapLibre GL JS draws it where it falls.
@@ -1930,10 +1942,10 @@ export class GLRenderer {
                 const tx = px / i.w + 0.5, ty = py / i.h + 0.5;
                 return [0, 1, 2].map(k => { const top = gc![k] + (gc![3 + k] - gc![k]) * tx; return top + (gc![6 + k] + (gc![9 + k] - gc![6 + k]) * tx - top) * ty; });
             };
-            room((i.halo ? 2 : 1) * ((gx.length - 2) >> 1) * ((gy.length - 2) >> 1) * (gc ? 108 : 54));
+            room((ring ? 2 : 1) * ((gx.length - 2) >> 1) * ((gy.length - 2) >> 1) * (gc ? 108 : 54));
             // A halo is the same picture drawn first, in the halo color and out to a lower level of the distance field.
-            for (let pass = i.halo ? 0 : 1; pass < 2; pass++) {
-                const halo = pass === 0, tint = halo ? i.halo! : col, alpha = Math.min(1, Math.max(0, opacity * i.opacity)) * 0.999 + (halo ? Math.round(i.haloReach! * 100) + 100 * Math.round(i.haloBlur! * 100) : 0);
+            for (let pass = ring ? 0 : 1; pass < 2; pass++) {
+                const halo = pass === 0, tint = halo ? hc : col, alpha = Math.min(1, Math.max(0, opacity * i.opacity * (P[9] ?? 1))) * 0.999 + (halo ? Math.round(Math.min(0.7, haw / i.k / 8) * 100) + 100 * Math.round(Math.min(0.99, (P[8] ?? ic.haloBlur) * 1.19 / i.k / 8) * 100) : 0);
                 for (let a = 0; a + 3 < gx.length; a += 2) for (let b = 0; b + 3 < gy.length; b += 2) {
                     // The two triangles of a cell: corners (0, 0), (1, 0), (0, 1) and (1, 0), (1, 1), (0, 1).
                     const x0 = gx[a + 1] - hw, x1 = gx[a + 3] - hw, y0 = gy[b + 1] - hh, y1 = gy[b + 3] - hh;
@@ -1990,7 +2002,7 @@ export class GLRenderer {
         let o = 0;
         const B = SDF_BUFFER;
         // The state of the label in work. `glyph` reads it, so that no objects are made for each glyph.
-        let q: number[] | undefined, hedge = 0, gamma = 0, haloGamma = 0, c0 = 0, c1 = 0, c2 = 0, c3 = 0, h0 = 0, h1 = 0, h2 = 0, h3 = 0;
+        let q: number[] | undefined, hedge = 0, gamma = 0, haloGamma = 0, hw = 0, c0 = 0, c1 = 0, c2 = 0, c3 = 0, h0 = 0, h1 = 0, h2 = 0, h3 = 0;
         /**
          * One glyph: two triangles about the origin (ox, oy). (cos, sin) is where one pixel along the text goes on the
          * screen, and (px, py) one pixel down the text: a turn by an angle, or the ground of a tilted map.
@@ -2018,11 +2030,13 @@ export class GLRenderer {
             // (Text on the ground of a tilted map has a frame in the place of its angle: see `Placed.frame`.)
             const s = l.size / EM, fr = l.frame, cos = fr ? fr[0] : Math.cos(l.angle), sin = fr ? fr[1] : Math.sin(l.angle), nx = fr ? fr[2] : -sin, ny = fr ? fr[3] : cos, src = l.src;
             // Where the halo's outer edge sits in distance-field units, limited by how far the field extends.
-            hedge = src.haloWidth > 0 && src.halo[3] > 0 ? Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / s / SDF_RADIUS) : 2;
-            gamma = 0.7 / (SDF_RADIUS * s * this.dpr); haloGamma = gamma + src.haloBlur * 1.19 / s / SDF_RADIUS;
-            const col = src.color, halo = src.halo;
-            c0 = Math.round(col[0] * 255); c1 = Math.round(col[1] * 255); c2 = Math.round(col[2] * 255); c3 = Math.round(col[3] * 255 * l.opacity * (l.alpha ?? 1));
-            h0 = Math.round(halo[0] * 255); h1 = Math.round(halo[1] * 255); h2 = Math.round(halo[2] * 255); h3 = Math.round(halo[3] * 255 * l.opacity * (l.alpha ?? 1));
+            // (A paint value that is the same for the layer is the one of this frame, so that it transitions: see `paint`.)
+            const P = this.paint.get(l.layer) ?? [], col = P[0] ?? src.color, halo = P[1] ?? src.halo, a = 255 * l.opacity * (P[4] ?? l.alpha ?? 1);
+            hw = P[2] ?? src.haloWidth;
+            hedge = hw > 0 && halo[3] > 0 ? Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - hw / s / SDF_RADIUS) : 2;
+            gamma = 0.7 / (SDF_RADIUS * s * this.dpr); haloGamma = gamma + (P[3] ?? src.haloBlur) * 1.19 / s / SDF_RADIUS;
+            c0 = Math.round(col[0] * 255); c1 = Math.round(col[1] * 255); c2 = Math.round(col[2] * 255); c3 = Math.round(col[3] * a * (P[0] ? src.op ?? 1 : 1));
+            h0 = Math.round(halo[0] * 255); h1 = Math.round(halo[1] * 255); h2 = Math.round(halo[2] * 255); h3 = Math.round(halo[3] * a * (P[1] ? src.op ?? 1 : 1));
             q = !l.curve && fr && fr.length > 4 ? fr : undefined;
             if (l.curve) {
                 // Text along a line: every glyph has its own origin and rotation.
@@ -2034,7 +2048,7 @@ export class GLRenderer {
                     // Rich text: this glyph has its own color or size. The label's values come back after it.
                     const keep = [c0, c1, c2, gamma, haloGamma, hedge], gs = g.scale ?? 1;
                     if (g.color) { c0 = Math.round(g.color[0] * 255); c1 = Math.round(g.color[1] * 255); c2 = Math.round(g.color[2] * 255); }
-                    if (gs !== 1) { gamma /= gs; haloGamma /= gs; if (hedge < 2) hedge = Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / (s * gs) / SDF_RADIUS); }
+                    if (gs !== 1) { gamma /= gs; haloGamma /= gs; if (hedge < 2) hedge = Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - hw / (s * gs) / SDF_RADIUS); }
                     glyph(g, l.x + curve[i * 3], l.y + curve[i * 3 + 1], Math.cos(ga) * along, Math.sin(ga) * along, x0, y0, x0 + g.w * k, y0 + g.h * k, l.ground?.[i * 3 + 1], l.ground?.[i * 3 + 2]);
                     [c0, c1, c2, gamma, haloGamma, hedge] = keep;
                 }
@@ -2051,7 +2065,7 @@ export class GLRenderer {
                             // Rich text: this glyph has its own size or color. The label's values come back after it.
                             const k = g.scale ?? 1, x0 = (pen + (g.left - B) * k) * s, y0 = (baseline + (g.dy ?? 0) - (g.top + B) * k) * s, keep = [c0, c1, c2, gamma, haloGamma, hedge];
                             if (g.color) { c0 = Math.round(g.color[0] * 255); c1 = Math.round(g.color[1] * 255); c2 = Math.round(g.color[2] * 255); }
-                            gamma /= k; haloGamma /= k; if (hedge < 2) hedge = Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - src.haloWidth / (s * k) / SDF_RADIUS);
+                            gamma /= k; haloGamma /= k; if (hedge < 2) hedge = Math.max(0.75 - (B - 0.75) / SDF_RADIUS, 0.75 - hw / (s * k) / SDF_RADIUS);
                             glyph(g, l.x, l.y, cos, sin, x0, y0, x0 + g.w * k * s, y0 + g.h * k * s, nx, ny);
                             [c0, c1, c2, gamma, haloGamma, hedge] = keep;
                         } else {

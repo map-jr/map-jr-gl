@@ -1,6 +1,7 @@
 // A plain static server for the output of `pnpm generate` (.output/public). It answers as the published site does:
 // `/vue` gives `vue/index.html` with no redirect, an address with no file gives `404.html` with the status 404, and the
-// rules of `_headers` add their headers (a path, where "*" matches the rest, and the indented headers under it).
+// rules of `_headers` add their headers (a path, where "*" matches the rest, and the indented headers under it), and the
+// lines of `_redirects` (`/from /to status`, where `:name` matches one segment and is replaced in the target) redirect.
 // Usage: node scripts/serve.mjs [port]. The default port is 4173.
 import {createReadStream, existsSync, readFileSync, statSync} from 'node:fs';
 import {createServer} from 'node:http';
@@ -23,8 +24,20 @@ export function serve(port = 4173) {
         if (!/^\s/.test(line)) rules.push({path: new RegExp('^' + line.trim().replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$'), headers: {}});
         else if (rules.length) { const [name, ...value] = line.trim().split(':'); rules.at(-1).headers[name.trim().toLowerCase()] = value.join(':').trim(); }
     }
+    const redirects = [];
+    for (const line of existsSync(join(root, '_redirects')) ? readFileSync(join(root, '_redirects'), 'utf8').split('\n') : []) {
+        const [from, to, status] = line.trim().split(/\s+/);
+        if (!to || from.startsWith('#')) continue;
+        redirects.push({from: new RegExp('^' + from.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/:(\w+)/g, '(?<$1>[^/]+)') + '$'), to, status: Number(status) || 302});
+    }
     const server = createServer((request, response) => {
         const path = normalize(decodeURIComponent(new URL(request.url, 'http://localhost').pathname));
+        for (const rule of redirects) {
+            const match = rule.from.exec(path);
+            if (!match) continue;
+            response.writeHead(rule.status, {location: rule.to.replace(/:(\w+)/g, (all, name) => match.groups?.[name] ?? all)});
+            return response.end();
+        }
         let file = join(root, path);
         if (!file.startsWith(root)) file = root;
         const isFile = candidate => existsSync(candidate) && statSync(candidate).isFile();

@@ -148,6 +148,46 @@ for (const mode of renderers) {
     check(`[${mode}] paint transitions: setPaintProperty and setStyle with diff move a colour over its transition, idle waits, diff: false is at once (#960)`,
         transitions.start === 0 && transitions.middle > 40 && transitions.middle < 215 && !transitions.idleInMiddle && transitions.end === 255 && transitions.diffMiddle > 40 && transitions.diffMiddle < 215 && transitions.instant === 255, JSON.stringify(transitions));
 
+
+    // Paint transitions of a symbol layer and of a fill-extrusion layer move over the transition and build no tiles again
+    // (#972): `text-color` and `fill-extrusion-height` are read while they move over 12 s (the middle is the first picture with a red above 80). The text is on a black background,
+    // so its largest red is its color; the extrusion (green) is counted in pixels.
+    const layerTransitions = await (async () => {
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const stats = async () => page.evaluate(async png => {
+            const bmp = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+            c.drawImage(bmp, 0, 0);
+            const d = c.getImageData(0, 0, bmp.width, bmp.height).data;
+            let max = 0, n = 0;
+            for (let i = 0; i < d.length; i += 4) { if (d[i] > max) max = d[i]; if (d[i + 1] > 60) n++; }
+            return {max, n};
+        }, (await page.screenshot({clip: {x: 0, y: 0, width: 300, height: 300}})).toString('base64'));
+        const out = {};
+        await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const el = window.layerEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:300px;z-index:99999'}));
+            const square = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-8, -8], [8, -8], [8, 8], [-8, 8], [-8, -8]]]}};
+            const m = window.layerMap = new mod.Map({container: el, renderer, center: [0, 0], zoom: 3, pitch: 60, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                sources: {s: {type: 'geojson', data: square}, p: {type: 'geojson', data: {type: 'Point', coordinates: [0, 0]}}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#000'}},
+                    {id: 'x', type: 'fill-extrusion', source: 's', paint: {'fill-extrusion-color': '#0a0', 'fill-extrusion-height': 0, 'fill-extrusion-height-transition': {duration: 12000, delay: 0}}},
+                    {id: 't', type: 'symbol', source: 'p', layout: {'text-field': 'WWW', 'text-size': 60, 'text-allow-overlap': true, 'text-pitch-alignment': 'viewport'}, paint: {'text-color': '#200', 'text-color-transition': {duration: 12000, delay: 0}}}]}});
+            await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+        }, mode);
+        await wait(200);
+        out.start = await stats();
+        await page.evaluate(() => { const m = window.layerMap; window.layerIdled = false; m.once('idle', () => window.layerIdled = true); m.setPaintProperty('t', 'text-color', '#f00'); m.setPaintProperty('x', 'fill-extrusion-height', 100000); });
+        for (let i = 0; i < 40; i++) { out.middle = await stats(); if (out.middle.max > 80) break; await wait(200); }
+        await page.waitForFunction(() => window.layerIdled, null, {timeout: 30000});
+        await wait(200);
+        out.end = await stats();
+        await page.evaluate(() => { window.layerMap.remove(); window.layerEl.remove(); });
+        return out;
+    })().catch(e => ({error: String(e)}));
+    check(`[${mode}] paint transitions: text-color and fill-extrusion-height move over their transition (#972)`,
+        layerTransitions.start?.max < 60 && layerTransitions.middle?.max > 80 && layerTransitions.middle.max < 235 && layerTransitions.end.max > 240
+        && layerTransitions.middle.n > layerTransitions.start.n + 100 && layerTransitions.end.n > layerTransitions.middle.n + 100, JSON.stringify(layerTransitions));
+
     // The array of queryRenderedFeatures that is read without `await` keeps its features after a change of the style that
     // does not change tile data (setPaintProperty, setStyle with a diff), as in MapLibre GL JS (#817).
     {
@@ -530,6 +570,32 @@ for (const mode of renderers) {
         const aroundOurs = await aroundJump('ours'), aroundMl = await aroundJump('ml');
         check(`[${mode}] easeTo with around and duration 0 fires its events once, inside the call, as in MapLibre GL JS (#2394)`,
             aroundOurs === aroundMl && aroundMl.startsWith('movestart zoomstart move zoom zoomend moveend [') && aroundMl.endsWith(' 6'), JSON.stringify({aroundOurs, aroundMl}));
+        // An easeTo or flyTo with no movement running fires movestart inside the call, also right after a jumpTo and for an
+        // ease that leaves the view as it is, and the movement does not end before the animation, as in MapLibre GL JS (#2451).
+        const firstEase = (lib, scenario) => page.evaluate(async ([lib, renderer, scenario]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            await new Promise(r => setTimeout(r, 300));
+            const log = [];
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            if (scenario === 'afterJump') m.jumpTo({center: [12, 46]});
+            log.push('|call');
+            if (scenario === 'flyTo') m.flyTo({center: [20, 50], duration: 600});
+            else m.easeTo({center: scenario === 'noop' ? m.getCenter() : [20, 50], duration: scenario === 'noop' ? 300 : 600});
+            log.push('|ret');
+            await new Promise(r => setTimeout(r, 1200));
+            const out = log.slice(log.indexOf('|call')).join(' ');
+            m.remove(); el.remove();
+            return out;
+        }, [lib, mode, scenario]).catch(e => String(e));
+        for (const scenario of ['easeTo', 'flyTo', 'afterJump', 'noop']) {
+            const ours = await firstEase('ours', scenario), ml = await firstEase('ml', scenario);
+            check(`[${mode}] ${scenario} with no movement running fires movestart inside the call, as in MapLibre GL JS (#2451)`,
+                ours === ml && ml === '|call movestart |ret move moveend', JSON.stringify({ours, ml}));
+        }
         // A drag pan on a flat map: a marker stays on its point in every frame (the pan reaches the camera with the move,
         // #479), and the events come in the order of MapLibre GL JS: movestart, dragstart, then move before each drag.
         const flatDrag = await page.evaluate(async renderer => {
@@ -2970,6 +3036,25 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures finds a polygon of a symbol layer on its shown point label and not elsewhere, with both renderers (#1969)',
             ['main', 'worker'].every(r => polygonLabel[r].join() === '1,1,0,0'), JSON.stringify(polygonLabel));
+        // The same, when the text of the label has a `{name}` token (#2324).
+        const tokenLabel = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const m = new mod.Map({container: el, renderer, center: [45, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {name: 'Area'}, geometry: {type: 'Polygon', coordinates: [[[35, -10], [55, -10], [55, 10], [35, 10], [35, -10]]]}}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'text-field': '{name}', 'text-size': 16}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const c = m.project([45, 0]);
+                const ask = async p => (await m.queryRenderedFeatures(p, {layers: ['t']})).length;
+                out[renderer] = [await ask([c.x, c.y]), await ask([c.x + 60, c.y])];
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures finds a polygon whose text-field has a {token} on its label, with both renderers (#2324)',
+            ['main', 'worker'].every(r => tokenLabel[r].join() === '1,0'), JSON.stringify(tokenLabel));
         // With `icon-optional`, the wide icon of B collides with the text of A and is hidden, and the text of B is shown. A
         // query at the point of A, under the hidden icon, finds only A, as MapLibre GL JS 6.17 does (#2089).
         const hiddenIcon = await page.evaluate(async () => {
@@ -5773,15 +5858,25 @@ for (const mode of renderers) {
             console.warn = (...a) => warnings.push(String(a[0]));
             const make = options => { const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'})); const m = new mod.Map({container: el, renderer: 'main', attributionControl: false, style: {version: 8, sources: {}, layers: []}, ...options}); maps.push(m); return m; };
             let thrown = '', thrownCode;
+            const strictOptions = [];
             try {
                 const m = make({fadeDuration: 0, projection: {type: 'globe'}, locale: 'fr', canvasContextAttributes: {preserveDrawingBuffer: true}, dragPan: {linearity: 0.5}, rotateSpeed: 2});
                 m.setRoll(10); m.showCollisionBoxes = true; m.setVerticalFieldOfView(NaN); m.setCenterElevation(100); m.setFeatureState({source: 's'}, {});
                 new mod.LogoControl({compact: true}); new mod.Popup({locationOccludedOpacity: 0.5}); mod.setWorkerUrl('https://unpkg.com/maplibre-gl/dist/maplibre-gl-csp-worker.js');
                 try { make({strict: true, fadeDuration: 0}); } catch (e) { thrown = e.message; thrownCode = e.code; }
+                // #2366: the two options that MapLibre GL JS reads throw too, in new Map() and in setStyle().
+                for (const options of [{terrainSkirtLength: 5}, {localIdeographFontFamily: 'serif'}]) {
+                    try { make({strict: true, ...options}); strictOptions.push('no throw ' + Object.keys(options)); } catch (e) { strictOptions.push(e.code + ' ' + e.message.split('key=')[1]); }
+                }
+                const sm = make({strict: true});
+                try { sm.setStyle({version: 8, sources: {}, layers: []}, {localIdeographFontFamily: 'serif'}); strictOptions.push('no throw setStyle'); } catch (e) { strictOptions.push(e.code + ' ' + e.message.split('key=')[1]); }
+                make({strict: true, terrainSkirtLength: 'auto', localIdeographFontFamily: 'sans-serif'}).setStyle({version: 8, sources: {}, layers: []}, {localIdeographFontFamily: 'sans-serif'});
             } finally { console.warn = warn; }
             for (const m of maps) { const el = m.getContainer(); m.remove(); el.remove(); }
-            return {warnings: warnings.filter(w => w.startsWith('[map-jr-gl]')), thrown, thrownCode};
+            return {warnings: warnings.filter(w => w.startsWith('[map-jr-gl]')), thrown, thrownCode, strictOptions};
         });
+        check('[main] maplibre-compat: strict: true throws E90 in the production build for terrainSkirtLength and localIdeographFontFamily, and not for their defaults (#2366)',
+            JSON.stringify(prod.strictOptions) === JSON.stringify(['E90 "The option terrainSkirtLength"', 'E90 "The option localIdeographFontFamily"', 'E90 "The option localIdeographFontFamily of setStyle"']), JSON.stringify(prod.strictOptions));
         check('[main] maplibre-compat: the production build writes no warning for a mistake or an option with no effect, and strict: true throws the code, its link and the option (#2133, #2148)',
             prod.warnings.length === 0 && prod.thrown === '[map-jr-gl] E90 https://map-jr.org/e/90 key="The option fadeDuration"' && prod.thrownCode === 'E90', JSON.stringify(prod));
     }

@@ -608,7 +608,7 @@ Properties:
 - `symbol-height-offset` and `symbol-height-anchor`. The properties are not read, so a symbol is placed on the ground. The development build of the main API warns one time for each layer with `symbol-placement` `point` and each property that has a value other than the default, because MapLibre GL JS reads the properties only at a point.
 - `fill-extrusion-rounded-corner-distance`. The property is not read, and the corners of an extrusion are sharp. The development build of the main API warns one time for each layer that has a value other than 0.
 - The source property `volatile` has no effect, as in MapLibre GL JS 6.17, which does not read it. The development build of the main API warns one time for each source that has `volatile: true`.
-- Paint transitions of symbol layers, of fill-extrusion layers and of `fill-outline-color`. The tiles hold these values, so a new value shows when the tiles are built again, with no transition, and nothing warns. Paint transitions of the other layer types are available: see [Paint transitions](map.md#update).
+- The transition of a first icon halo. A symbol layer whose icons get a halo where they had none (`icon-halo-width` from 0, or a first `icon-halo-color`) shows it when the tiles are built again, with no transition, and nothing warns. Other paint transitions are available: see [Paint transitions](map.md#update).
 - `vertical-align` in `format` text in the server renderer. Its SVG (`renderToSVG`) draws each line in one size on one baseline.
 
 Layers that the server renderer does not draw:

@@ -16,7 +16,9 @@ test('fill-extrusion: a negative height or base is 0', () => {
     const each = build({'fill-extrusion-height': ['get', 'height'], 'fill-extrusion-base': ['get', 'base']});
     assert.deepEqual(Array.from(each.height!), [0, 20, 30]);
     assert.deepEqual(Array.from(each.base!), [0, 0, 10]);
+    // (A height and a base of the whole layer are drawn by the page, which makes a negative value 0: the tile has 1 and 0, #972.)
     const constant = build({'fill-extrusion-height': -10, 'fill-extrusion-base': -20});
-    assert.deepEqual(Array.from(constant.height!), [0, 0, 0]);
+    assert.equal(constant.lift, true);
+    assert.deepEqual(Array.from(constant.height!), [1, 1, 1]);
     assert.deepEqual(Array.from(constant.base!), [0, 0, 0]);
 });
