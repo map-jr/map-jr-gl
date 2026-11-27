@@ -1713,6 +1713,18 @@ A warning of the server renderer.
 renderElement(): attributes.<attribute> is dropped, because the element already has the attribute "<lower>" from the description or from an earlier entry. Remove it from attributes or change the description.
 ```
 
+## E2412
+
+A warning of the main API (development build only).
+
+```text
+interactive: the value of "<gesture>" is not true or false, so the gesture stays on. Write true or false.
+```
+
+```text
+interactive: "<gesture>" is not a gesture, so it has no effect. Write one of dragPan, scrollZoom, dragRotate, doubleClickZoom, touchZoomRotate, touchPitch, keyboard or boxZoom.
+```
+
 ## E2434
 
 A warning of the server renderer.

@@ -50,7 +50,7 @@ const map = createMap('map', {
 | [`maxBounds`](#maxbounds) | `Bounds \| null` | | A box that the view cannot leave, as `[[west, south], [east, north]]` or `[west, south, east, north]`. |
 | `cursor` | `string \| null` | | The CSS cursor over the map in place of the default, which is `pointer` over a feature of `interactiveLayers`. |
 | [`cooperativeGestures`](#cooperativegestures) | `boolean \| null` | `false` | Whether the wheel zooms only with Ctrl (⌘ on a Mac) and a touch pans only with two fingers, for a map in a page that scrolls. |
-| `interactive` | `boolean \| null` | `true` | Whether the user can move the map with the mouse, touch and keyboard, while `onClick` and `state.hover` work either way. |
+| [`interactive`](#interactive) | `boolean \| Gestures \| null` | `true` | Whether the user can move the map with the mouse, touch and keyboard, while `onClick` and `state.hover` work either way. |
 | [`colorScheme`](#colorscheme-and-oncolorschemechange) | `ColorScheme \| null` | `'light'` | The color scheme of the controls, the popup and the attribution. |
 | [`onColorSchemeChange`](#colorscheme-and-oncolorschemechange) | `((colorScheme: ColorScheme) => void) \| null` | | Called with the new value when the control `colorScheme()` changes `colorScheme`. |
 | [`locale`](#locale) | `Record<string, string> \| null` | | The texts of the controls, the popup, the marker and the hint of `cooperativeGestures`, by the keys of MapLibre GL JS, for example `{'NavigationControl.ZoomIn': 'Zoom avant'}`. |
@@ -597,6 +597,40 @@ and the map zooms in until the world fills the width of the view. No tiles of ot
 markers and popups stay at the longitude that they were given. When `update` changes the field to `false`, the view
 moves inside at once. In `@map-jr/map-jr-gl/maplibre-compat`, `setRenderWorldCopies(false)` does not move the view, as
 in MapLibre GL JS: the next camera change keeps it inside.
+
+## `interactive`
+
+With `interactive: false`, the user cannot move the map: the mouse, touch and keyboard gestures are all off. The map
+still fires its pointer events, so `onClick` and `state.hover` work. With an object, a page turns off single gestures.
+A key that the object leaves out is on, and `false` turns that gesture off, so `{scrollZoom: false}` keeps every gesture
+except the wheel zoom. `true` and `false` keep their meaning.
+
+```js
+// Entry: @map-jr/map-jr-gl
+map.update({
+  ...description,
+  interactive: {scrollZoom: false, dragRotate: false},
+});
+```
+
+In the Vue component, write `:interactive="{scrollZoom: false}"`. A change in `update` turns the gestures on or off at
+once: `false` also turns off a gesture that a plugin had enabled alone, and `true` turns on every gesture. An object
+that has the same keys as before changes nothing. In the development build, a key that is not a gesture, or a value
+that is not `true` or `false`, logs a warning once. The element `<map-jr>` has the attribute `no-interactive` for
+`false`, and the property `interactive` takes an object.
+
+### `Gestures`
+
+| Key | Gesture |
+|---|---|
+| `dragPan` | Drag with the mouse or one finger to move the map. |
+| `scrollZoom` | Wheel or trackpad scroll to zoom. |
+| `dragRotate` | Drag with the right button, or with Ctrl held, to rotate and pitch. |
+| `doubleClickZoom` | Double click or double tap to zoom in. |
+| `touchZoomRotate` | Pinch with two fingers to zoom and rotate. |
+| `touchPitch` | Drag two fingers up or down to pitch. |
+| `keyboard` | The arrow keys, plus and minus to move and zoom. |
+| `boxZoom` | Shift and drag to draw a box and zoom to it. |
 
 ## `cooperativeGestures`
 

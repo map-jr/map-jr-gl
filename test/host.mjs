@@ -2797,6 +2797,17 @@ for (const renderer of renderers) {
         const liveOn = {moved: await dragMoved(), grab: await grab()};
         check(`[${renderer}] interactive: update({interactive: false}) stops a drag and update({interactive: true}) brings it back (#213)`,
             !liveOff.moved && !liveOff.grab && liveOn.moved && liveOn.grab, JSON.stringify({liveOff, liveOn}));
+        // `interactive` as an object (#2412): a key that is `false` turns that gesture off, a missing key is on.
+        const wheelZoomed = async () => { const z = await page.evaluate(() => window.t.host.state.get().view.zoom); await page.mouse.move(450, 300); await page.mouse.wheel(0, -300); await page.waitForTimeout(900); return Math.abs(await page.evaluate(() => window.t.host.state.get().view.zoom) - z) > 0.05; };
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, interactive: {scrollZoom: false}}); });
+        const noWheel = {moved: await dragMoved(), zoomed: await wheelZoomed(), grab: await grab()};
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, interactive: {dragPan: false}}); });
+        const noDrag = {moved: await dragMoved(), zoomed: await wheelZoomed()};
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, interactive: {}}); });
+        const allOn = {moved: await dragMoved(), zoomed: await wheelZoomed()};
+        check(`[${renderer}] interactive: {scrollZoom: false} stops the wheel and keeps the drag, {dragPan: false} stops the drag and keeps the wheel, and {} turns every gesture on (#2412)`,
+            noWheel.moved && !noWheel.zoomed && noWheel.grab && !noDrag.moved && noDrag.zoomed && allOn.moved && allOn.zoomed, JSON.stringify({noWheel, noDrag, allOn}));
+        await page.evaluate(() => { const t = window.t; t.host.update(t.spec = {...t.spec, interactive: undefined}); });
         // `cooperativeGestures` (#41): a plain wheel does not zoom and shows the hint; Ctrl + wheel zooms; update() turns it off.
         const zoomNow = () => page.evaluate(() => window.t.host.state.get().view.zoom);
         // (The library asks for ⌘ instead of Ctrl when the user agent says Mac, as MapLibre GL JS does.)

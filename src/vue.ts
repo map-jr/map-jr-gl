@@ -8,7 +8,7 @@
 import {Comment, computed, defineComponent, Fragment, getCurrentInstance, h, inject, mergeProps, provide, isProxy, isReactive, onBeforeUnmount, onMounted, onServerPrefetch, shallowRef, Teleport, toRaw, toValue, watch, type AllowedComponentProps, type ComponentCustomProps, type SetupContext, type SlotsType, type VNode, type VNodeProps, type MaybeRefOrGetter, type PropType, type ShallowRef} from 'vue';
 declare const __DEV__: boolean;
 import {earlyMethod, mistake} from './mistakes.ts';
-import type {AttributionOptions, ColorScheme, Renderer, SpriteInput, ControlSpec, FeatureOptions, FeaturePlace, SourceOptions, MapInstance, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapDescription, MapErrorInfo, MapState, View, ViewInput, InitialView} from './host.ts';
+import type {AttributionOptions, ColorScheme, Renderer, SpriteInput, ControlSpec, FeatureOptions, FeaturePlace, SourceOptions, MapInstance, MapOverlay as Overlay, OverlayOptions, MapEvents, MapPointer, MapDescription, Gestures, MapErrorInfo, MapState, View, ViewInput, InitialView} from './host.ts';
 import {FORWARDED, type Forwarded} from './map-events.ts';
 import type {SSROverrides} from './style.ts';
 import type {RenderedFeature} from './map.ts';
@@ -389,10 +389,10 @@ const MapJrComponent = defineComponent({
          */
         fontFamily: String as PropType<string | null>,
         /**
-         * Whether the user can move the map.
+         * Whether the user can move the map. An object turns single gestures off: `{scrollZoom: false}`.
          * @default true
          */
-        interactive: {type: Boolean as PropType<boolean | null>, default: undefined},
+        interactive: {type: [Boolean, Object] as PropType<boolean | Gestures | null>, default: undefined},
         /**
          * Whether the canvas uses multisample antialiasing. Read only when the map is created.
          * @default false
