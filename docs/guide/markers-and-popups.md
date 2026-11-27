@@ -408,9 +408,9 @@ const map = createMap('map', {
       lngLat: place.geometry.coordinates,
       popup: true,
       offset: [0, -30],
-      onClose: () => {
-        popup = null;
-      },
+      // The button closes the popup. Without `closeButton`, a popup has no
+      // button unless `onClose` is set.
+      closeButton: true,
     });
   },
 });
@@ -614,8 +614,9 @@ Two things often go wrong:
 
 - `features` is empty. In the main API and the adapters, a click reports only the features of the layers in
   `interactiveLayers`.
-- The popup has no button to close it. A popup of `overlay` and of `MapOverlay` has a close button only when
-  `onClose` (`@close` in Vue) is set. The button closes the popup and then calls `onClose`.
+- The popup has no button to close it. A popup of `overlay` and of `MapOverlay` has a close button when
+  `closeButton` is `true`, and by default when `onClose` (`@close` in Vue) is set. The button closes the popup and then
+  calls `onClose`.
 
 ## Put an element of the page on the map, and let the user move it
 

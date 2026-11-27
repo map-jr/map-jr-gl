@@ -79,6 +79,7 @@ texts[1195] = (control, custom) => custom
     : `controls: ${control}() is in the list twice with the same options, so the map adds it once. Remove the second ${control}().`;
 /** The option of an overlay that `option` is with another case of its letters, such as `lngLat` for `lnglat`. */
 const overlayOption = (option: string) => overlayOptions.find(k => k.toLowerCase() === option.toLowerCase());
+texts[214] = call => `${call}: a marker takes "offset" as a pair, [x, y], so a number or an object with a pair for each anchor has no effect. Write a pair, or add "popup: true".`;
 texts[1647] = (option, call) => `${call}: "${option}" is not an option of an overlay, so it has no effect. ${overlayOption(option) ? `Write "${overlayOption(option)}". ` : ''}The options are ${overlayOptions.join(', ')}.`;
 texts[1139] = (where, near) => `${where}: a layer of this type has no such property in the style specification, so the map ignores it. ${near ? `Write "${near}".` : 'Check the name in the style specification, or remove it.'}`;
 texts[1748] = (where, why) => `${where}: ${why}. The map draws what it can, but MapLibre GL JS rejects the style. Correct it as the style specification requires.`;
@@ -124,7 +125,7 @@ export const unknownMapOption = (name: string): string => {
     return near ? mistake(2272, name, near) : '';
 };
 /** The options of `overlay()` (`OverlayOptions`). `pnpm test:consistency` compares the list with src/host.ts. Other options warn (#1647). */
-const overlayOptions = ['lngLat', 'anchor', 'offset', 'popup', 'onClose', 'draggable', 'onDragStart', 'onDrag', 'onDragEnd'];
+const overlayOptions = ['lngLat', 'anchor', 'offset', 'popup', 'onClose', 'closeButton', 'closeOnClick', 'draggable', 'onDragStart', 'onDrag', 'onDragEnd'];
 /** A query at a point or a position, and not in a rectangle or on the whole map. */
 const place = (at: unknown) => !!at && !(Array.isArray(at) && typeof at[0] !== 'number');
 /** MapLibre GL JS's error for the expression `e` of a property when `e` uses ["zoom"] where MapLibre does not accept it,
@@ -450,7 +451,12 @@ export function check(c: Checked, kind: number, a?: any, b?: any) {
     } else if (kind === 9) warn(30, a, (map.getSource(b) as {type?: string} | undefined)?.type ?? 'geojson');
     else if (kind === 7) warn(23);
     // (Each unknown option warns once for each map, whichever of overlay(), update() and patch() gave it first.)
-    else if (kind === 1647) { for (const k in b) if (!overlayOptions.includes(k) && !c.warned.has('1647 ' + k)) { c.warned.add('1647 ' + k); console.warn(mistake(1647, k, a)); } }
+    else if (kind === 1647) {
+        for (const k in b) if (!overlayOptions.includes(k) && !c.warned.has('1647 ' + k)) { c.warned.add('1647 ' + k); console.warn(mistake(1647, k, a)); }
+        // (`overlay()` and `update()` have the complete options. A marker takes a pair only: another form of `offset` has no effect.)
+        const o = b as {popup?: boolean; offset?: unknown};
+        if (a !== 'patch()' && !o.popup && o.offset !== undefined && !Array.isArray(o.offset) && !c.warned.has('214')) { c.warned.add('214'); console.warn(mistake(214, a)); }
+    }
     else if (kind === 1190) warn(1190);
     else if (kind === 1147) { for (const k of ['padding', 'maxZoom']) if (k in b) warn(1147, a, k); }
     else {
