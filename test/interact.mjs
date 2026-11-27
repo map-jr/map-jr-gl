@@ -5228,6 +5228,12 @@ for (const mode of renderers) {
             const draggedPlain = make({dragPan: true, rotateSpeed: 0.8, pitchSpeed: -0.5, aroundCenter: true});
             draggedPlain.dragPan.enable(); draggedPlain.dragRotate.enable(true);
             out.drag.push(warnings.splice(0).length);
+            // An option that is not an option of MapLibre GL JS warns once with the closest name (#2272).
+            const unknown = make({fooBarBaz: 1, fadeDuraton: 5});
+            const own = warnings.splice(0).filter(w => w.startsWith('[map-jr-gl] '));
+            const knownPlain = make({terrainSkirtLength: 'auto', centerClampedToGround: true, strict: false});
+            out.unknown = {own, plain: warnings.splice(0).length};
+            for (const x of [unknown, knownPlain]) { x.getContainer().remove(); x.remove(); }
             for (const x of [dragged, draggedPlain]) { x.getContainer().remove(); x.remove(); }
             projected.getContainer().remove(); projected.remove();
             // The defaults give no warning.
@@ -5249,6 +5255,10 @@ for (const mode of renderers) {
             JSON.stringify(quiet.debugDraw) === '[true,1,0]', JSON.stringify(quiet.debugDraw));
         check('[main] maplibre-compat: the options of dragPan and dragRotate, rotateSpeed, pitchSpeed and aroundCenter give one warning each, and the defaults none (#673)',
             JSON.stringify(quiet.drag) === '[true,true,7,0,0]', JSON.stringify(quiet.drag));
+        check('[main] maplibre-compat: an unknown option of new Map() warns once with the closest name (#2272)',
+            quiet.unknown.own.length === 2 && quiet.unknown.plain === 0 && /"fooBarBaz" is not an option of the map/.test(quiet.unknown.own[0]) && !/Did you mean/.test(quiet.unknown.own[0])
+            && /"fadeDuraton" is not an option.* Did you mean "fadeDuration"\?/.test(quiet.unknown.own[1])
+            , JSON.stringify(quiet.unknown));
         check('[main] maplibre-compat: each option with no effect gives one warning, the defaults give none, the option projection has no effect, and maxBounds works',
             quiet.options.length === 1 && ['E387 new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob()'].every(n => quiet.options.some(w => w.startsWith('[map-jr-gl] ' + n))) && quiet.plain.length === 0 && String(quiet.bounds) === '-10,-10,10,10' && quiet.clamped.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3) && quiet.later.every((v, i) => Math.abs(v - [1.2109, 3.4573][i]) < 1e-3)
             && quiet.custom.length === 0 && quiet.projected?.join() === 'none,1', JSON.stringify({options: quiet.options, plain: quiet.plain, bounds: quiet.bounds, clamped: quiet.clamped, later: quiet.later, custom: quiet.custom, projected: quiet.projected}));

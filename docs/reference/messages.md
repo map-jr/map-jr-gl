@@ -1643,6 +1643,18 @@ The production build prints this:
 addImage("<image name>"): the data has <length> values, but an image of <width>×<height> needs <expected> (width × height × 4, RGBA). Pass an array of that length.
 ```
 
+## E2272
+
+A warning of the main API (development build only).
+
+```text
+new Map(): "<member>" is not an option of the map, so it has no effect. Did you mean "<near>"? Check the spelling against the options of MapLibre GL JS, or remove "<member>".
+```
+
+```text
+new Map(): "<member>" is not an option of the map, so it has no effect. Check the spelling against the options of MapLibre GL JS, or remove "<member>".
+```
+
 ## E10017
 
 A warning of both entries.
