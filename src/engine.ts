@@ -1429,6 +1429,7 @@ export class Engine {
             if (this.tellLoads && !t.quiet) this.emit({type: 'tileLoaded', key});
             t.gl = gl;
             t.state = 'ok';
+            this.backfill(source, id, key, gl);
             this.expire(t, t.expires);
             t.at = performance.now();
             t.rev = ++this.tilesVersion;
@@ -1544,6 +1545,7 @@ export class Engine {
             if (this.tiles.get(key) !== t || !gl) return gl && this.renderer.destroyTile(gl);
             const old = t.gl;
             t.gl = gl;
+            this.backfill(source, id, key, gl);
             t.rev = ++this.tilesVersion;
             if (old) this.renderer.destroyTile(old);
             if (report && !same && this.tellLoads && !t.quiet) this.emit({type: 'tileLoaded', key});
@@ -1590,6 +1592,22 @@ export class Engine {
         t.dem = undefined;
         t.missing = true;
         return {labels: {}, batches: {}};
+    }
+
+    /**
+     * The border of the texture of a new elevation tile takes the edges of the loaded tiles around it, and their borders
+     * take its edges, as in MapLibre GL JS (#2319). (This runs when the tile is stored, so two tiles that arrive in the
+     * same frame each find the other.)
+     */
+    private backfill(source: string, id: TileID, key: string, gl: GLTile) {
+        const n = 2 ** id.z;
+        if (!gl.raw) return;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+            const y = id.y + dy, k = `${source}|${id.z}/${(id.x + dx + n) % n}/${y}`, o = this.tiles.get(k)?.gl;
+            if (k === key || y < 0 || y >= n || !o?.raw) continue;
+            this.renderer.backfillDem(gl, o, dx, dy);
+            this.renderer.backfillDem(o, gl, -dx, -dy);
+        }
     }
 
     private elevationTile(dem: ElevationTile, source: string, id: TileID, key: string, t: TileState, encoding: DemEncoding) {

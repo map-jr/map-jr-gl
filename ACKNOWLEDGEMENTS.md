@@ -53,6 +53,9 @@ BSD-3-Clause.
   and the shader `line_sdf`): the end is soft over `sdfgamma`, one device pixel to each side, a round cap is half an
   ellipse, and a dash is one texel of that texture longer. The shader computes the distance instead of reading a
   texture, and the code in `src/gl.ts` is new.
+- The texture of an elevation tile has a border of 2 pixels that takes the edges of the neighbor tiles, as `DEMData`
+  and `backfillBorder` of MapLibre GL JS 6.17 do (BSD-3-Clause; `src/data/dem_data.ts`), and the ground under a
+  building is read from it as `get_elevation` reads it. The code in `src/gl.ts` and `src/engine.ts` is new.
 - The layer type `color-relief` follows the method of MapLibre GL JS (BSD-3-Clause; `color_relief_style_layer.ts` and
   the shader `color_relief`): the stops of the `interpolate` expression go to the GPU, and the shader searches the two
   stops around an elevation and mixes their colors. The code in `src/style.ts`, `src/gl.ts` and `src/layers-more.ts` is new.
