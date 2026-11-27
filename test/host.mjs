@@ -1382,6 +1382,23 @@ for (const renderer of renderers) {
                 F.initialOld > 4 && F.movedOld > 5 && Math.abs(F.padded) <= 2 && said('initialView', 'maxZoom') && said('initialView', 'padding') && said('moveTo()', 'maxZoom') && said('fitBounds()', 'padding'), JSON.stringify(F));
         }
 
+        // 2c. `fonts` as an array (the removed form) loads no font, and the development build says so once, with the object to write (#2265).
+        const fontsArray = await page.evaluate(async renderer => {
+            const t = window.t, warned = [], warn = console.warn;
+            console.warn = (...a) => warned.push(a.join(' '));
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:200px;height:150px'}));
+            const style = {version: 8, sources: {}, layers: []}, array = [{family: 'Open Sans', src: '/x.woff2'}];
+            const m = t.lib.createMap(el, {style, fonts: array, renderer, attribution: false});
+            m.update({style, fonts: array.slice(), renderer, attribution: false});
+            m.update({style, fonts: {'Open Sans': '/x.woff2'}, renderer, attribution: false});
+            await new Promise(r => setTimeout(r, 500));
+            m.destroy(); el.remove();
+            console.warn = warn;
+            return warned.filter(w => w.includes('E2265'));
+        }, renderer);
+        check(`[${renderer}] fonts as an array warns once and names the object to write, and an object of font faces does not warn (#2265)`,
+            fontsArray.length === 1 && fontsArray[0].startsWith('[map-jr-gl] E2265 fonts: [{"family":"Open Sans"') && fontsArray[0].includes('{"Open Sans": "https://example.com/open-sans.woff2"}'), JSON.stringify(fontsArray));
+
         // 2d. "view" together with "initialView.bounds": the map starts at "view", and the development build says so once (#1148).
         const viewWins = await page.evaluate(async renderer => {
             const t = window.t, warned = [], warn = console.warn;

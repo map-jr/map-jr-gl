@@ -1667,6 +1667,14 @@ The production build prints this:
 addImage("<image name>"): the data has <length> values, but an image of <width>×<height> needs <expected> (width × height × 4, RGBA). Pass an array of that length.
 ```
 
+## E2265
+
+A warning of the main API (development build only).
+
+```text
+<call>: <faces> is not an object of font faces, so the map loads no font from it. Write an object by "text-font" name, such as {"Open Sans": "https://example.com/open-sans.woff2"}, or {"Open Sans": [{"url": "https://example.com/open-sans-latin.woff2", "unicode-range": ["U+0000-00FF"]}]}.
+```
+
 ## E2272
 
 A warning of the compat entry (development build only).
