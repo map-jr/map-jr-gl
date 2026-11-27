@@ -80,10 +80,10 @@ test('the color scheme sets the class of the layer, and auto gets rules for the 
 const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#abcdef'}}]};
 test('renderFirstView and renderElement put the controls into the first view; without controls renderFirstView keeps the plain credits', async () => {
     const view = {style, center: [0, 0] as [number, number], zoom: 4, width: 600, height: 400, attribution: 'Own <a href="https://example.com">credits</a>'};
-    const plain = await renderFirstView(view);
+    const plain = (await renderFirstView(view)).html;
     assert.doesNotMatch(plain, /<style|ctrl-/);
     assert.match(plain, /<div data-map-jr-ssr="" style="position:absolute;right:0;bottom:0/);
-    const withControls = await renderFirstView({...view, controls: [navigation(), scale()]});
+    const withControls = (await renderFirstView({...view, controls: [navigation(), scale()]})).html;
     assert.match(withControls, /^<div data-map-jr-ssr="" style="position:absolute;inset:0;overflow:hidden"><svg[^>]*data-map-jr-ssr/);
     assert.match(withControls, /map-jr-ctrl-zoom-in/);
     assert.match(withControls, /<a href="https:\/\/example.com" target="_blank" rel="noopener noreferrer">credits<\/a>/);
