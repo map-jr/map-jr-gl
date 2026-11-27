@@ -1929,6 +1929,21 @@ for (const renderer of renderers) {
             first === '#f0f' && again === 0 && replaced === '#0ff' && last === '#00f' && stays && !gone.has && !late && !after.includes('#00f') && gone.errors.length === 1 && gone.errors[0].startsWith('[map-jr-gl] E20121 images: the image "lost" did not load.'),
             JSON.stringify({first, again, replaced, last, stays, gone, late, after}));
 
+        // Raw pixels of the wrong length are E2233 (#2241), and the image that is right stays.
+        const badPixels = await page.evaluate(async () => {
+            const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms));
+            t.imageErrors.length = 0;
+            t.host.update(t.spec = {...t.spec, onError: e => t.imageErrors.push(e.message), images: {square: t.square('#00f'), short: {width: 2, height: 2, data: new Uint8Array(3)}}});
+            for (let i = 0; i < 50 && !t.imageErrors.length; i++) await wait(100);
+            const out = {errors: [...t.imageErrors], has: t.host._map.hasImage('square')};
+            const {images: _, ...rest} = t.spec;
+            t.host.update(t.spec = rest);
+            return out;
+        });
+        check(`[${renderer}] raw pixels of the wrong length give onError the message E2233, and the other images stay`,
+            badPixels.errors.length === 1 && badPixels.errors[0].startsWith('[map-jr-gl] E2233 addImage("short"): the data has 3 values, but an image of 2×2 needs 16') && badPixels.has,
+            JSON.stringify(badPixels));
+
         // Images of the style in metadata["map-jr:images"] (#495): drawn, replaced by an image of `images` with the same
         // name, kept by an update of `images`, removed with the style, and bounded. A URL goes through transformRequest.
         await page.evaluate(() => {

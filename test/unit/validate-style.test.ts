@@ -76,6 +76,26 @@ const styles = [
     ]},
 ];
 
+// (The values of sources, step 4 of #1748. A canvas source is not in the list: it has a step of its own.)
+const coords = [[0, 1], [1, 1], [1, 0], [0, 0]];
+const sourceStyles = [
+    {sources: {v: {type: 'vector', url: 5, tiles: 'a', bounds: [1, 2, 3], scheme: 'zxy', emptyResponse: 'x', minzoom: '0', maxzoom: NaN, attribution: 3, promoteId: {a: 1, b: 'p'}, volatile: 1, encoding: 'pbf', extra: 1}}, layers: []},
+    {sources: {v: {type: 'vector', tiles: [1, 'a'], bounds: [1, 2, 3, 'x'], promoteId: 7}, r: {type: 'raster', tiles: ['a'], tileSize: 'big', bounds: 'x', scheme: 'tms'}}, layers: []},
+    {sources: {g: {type: 'geojson', data: fc, maxzoom: 'a', buffer: 600, tolerance: null, cluster: 'yes', clusterRadius: -1, clusterMaxZoom: 'a', clusterMinPoints: 'a', lineMetrics: 0, generateId: 'a', promoteId: ['a'], filter: ['==', 'a', {}], attribution: 1, extra: 1}}, layers: []},
+    {sources: {g: {type: 'geojson', data: fc, filter: ['get', 'a'], promoteId: 'id', cluster: true, clusterProperties: {sum: ['+', ['get', 'a']]}}}, layers: []},
+    {sources: {d: {type: 'raster-dem', url: 3, encoding: 'x', redFactor: 2, tileSize: 'a', unknown: 1}, e: {type: 'raster-dem', encoding: 'custom', redFactor: 'a', baseShift: 1, bounds: [1, 2, 3, 4]}, f: {type: 'raster-dem', encoding: 'terrarium', baseShift: 1, blueFactor: 1}}, layers: []},
+    {sources: {i: {type: 'image', url: 4, coordinates: coords, extra: 1}, j: {type: 'image', url: 'a', coordinates: [[0, 1], [1, 1], [1, 0]]}, k: {type: 'image', coordinates: [[0, 1], [1, 1], [1, 0], 'a']}, l: {type: 'image', coordinates: [[0, 1], [1, 'x'], [1, 0, 3], [0, 0]]}, m: {type: 'image', coordinates: 'a'}}, layers: []},
+    {sources: {m: {type: 'video', urls: ['a', 2], coordinates: coords, url: 'a'}, n: {type: 'video', urls: 'a', coordinates: [[0, 1], [1, 1], [1, 0], [0, 0], [1, 1]]}}, layers: []},
+    {sources: {a: {type: 'tiles'}, b: {type: 5}, c: {type: 'vector', url: 'https://example.com/v.json', minzoom: 0, maxzoom: 14}, d: {type: 'raster', url: 'https://example.com/r.json', tileSize: 256}}, layers: []},
+];
+test('the texts of the values of sources are those of MapLibre GL JS', () => {
+    for (const s of sourceStyles) {
+        const ours: string[] = [];
+        validateStyle(s, (where, why) => ours.push(`${where}: ${why}`));
+        assert.deepEqual(ours.sort(), validateStyleMin({version: 8, ...s}).map(e => e.message).sort(), JSON.stringify(s));
+    }
+});
+
 test('src/style-spec-values.ts is what scripts/style-spec-values.mjs writes', async () => {
     const {source} = await import('../../scripts/style-spec-values.mjs');
     assert.equal(readFileSync(new URL('../../src/style-spec-values.ts', import.meta.url), 'utf8'), source(), 'Run node scripts/style-spec-values.mjs.');
