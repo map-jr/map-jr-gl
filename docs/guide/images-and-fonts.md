@@ -610,8 +610,9 @@ demo tiles. The names of the images of a sprite are the keys of its JSON file, h
   one URL has the id `default`.
 - A sprite that does not load is reported to `onError` with its URL. The map still draws the images of the other
   sprites.
-- In the main API, a change of `sprite` loads the style again: the map requests the style and draws it from the start.
-  The view, and the `sources`, `layers`, `data` and `images` of the description, stay.
+- In the main API, a change of `sprite` loads the new sprite only. The map requests the new sprite files and draws the icons
+  again when they arrive. It does not load the style again, and the view, the `sources`, `layers`, `data` and `images` of the
+  description stay.
 
 ## Create an image when a layer asks for it
 
