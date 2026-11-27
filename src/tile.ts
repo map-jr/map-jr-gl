@@ -57,6 +57,8 @@ export interface Batch {
     most?: number[];
     /** Lines with a gradient: for each feature, how far along the whole line it starts and ends (0 to 1). */
     progress?: Float32Array;
+    /** Lines: 1 for each feature that is a polygon, whose rings are closed (see `tessellateLine`); present when one is. */
+    closed?: Uint8Array;
     cap?: string;
     join?: string;
     /** `line-miter-limit` and `line-round-limit`: the longest miter (in line widths) drawn as a miter or kept sharp instead of rounded. */
@@ -369,7 +371,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             const stroke1: number[] | null = ddStroke && (moves(p.strokeColor) || moves(p.strokeOpacity)) ? [] : null;
             let grows = false;
             const most = [0, 0, 0];
-            const progress: number[] | null = line && L.ramp ? [] : null;
+            const progress: number[] | null = line && L.ramp ? [] : null, closed: number[] = [];
             const scalarProp = line ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
             for (const f of fs) {
                 // Circle and heatmap layers take any geometry: every vertex of a line or polygon is a point.
@@ -394,6 +396,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                     start = end;
                 }
                 featEnds.push(ringEnds.length);
+                if (line) closed.push(f.type === 3 ? 1 : 0);
                 if (ddColor) pushColor(color, p.color.dd ? p.color.eval(zs, f) : WHITE, p.opacity.dd ? p.opacity.eval(zs, f) : 1);
                 if (scalarProp?.dd) {
                     const now = scalarProp.eval(zs, f), then = scalarProp.eval(z1, f);
@@ -425,6 +428,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             };
             if (ddColor && !progress) batch.color = Uint8Array.from(color);
             if (progress) batch.progress = Float32Array.from(progress);
+            if (closed.includes(1)) batch.closed = Uint8Array.from(closed);
             if (scalarProp?.dd) batch[line ? 'width' : 'radius'] = Float32Array.from(scalar);
             if (scalarProp?.dd && grows) batch[line ? 'width1' : 'radius1'] = Float32Array.from(scalar1);
             if (line && (scalarProp!.dd || p.gap.dd || p.offset.dd)) batch.most = most;
@@ -899,10 +903,11 @@ function tessellateLine(b: Batch): GLBatch | null {
                 const x = coords[i * 2] * k, y = coords[i * 2 + 1] * k, n = xs.length;
                 if (!n || x !== xs[n - 1] || y !== ys[n - 1]) { xs.push(x); ys.push(y); }
             }
-            const n = xs.length;
-            if (n < 2) continue;
+            const n = xs.length, closed = b.closed?.[f];
+            if (n < (closed ? 3 : 2)) continue;
             if (b.progress) { ringLength = 0; for (let i = 0; i < n - 1; i++) ringLength += Math.hypot(xs[i + 1] - xs[i], ys[i + 1] - ys[i]) / 2; }
-            let last = -1, dist = 0, pdx = 0, pdy = 0, plen = 0, mid1 = -1, mid2 = -1;
+            // As in MapLibre GL JS, the dashes of a polygon ring start with the length of its closing segment counted.
+            let last = -1, dist = closed ? Math.hypot(xs[n - 1] - xs[n - 2], ys[n - 1] - ys[n - 2]) / 2 : 0, pdx = 0, pdy = 0, plen = 0, mid1 = -1, mid2 = -1;
             /**
              * The two triangles from the pair `last` to the pair `a`. The middle vertex of a round cap lies on the edge
              * between the two vertices of the pair at the end of the line (`mid1` on that of `last`, `mid2` on that of
