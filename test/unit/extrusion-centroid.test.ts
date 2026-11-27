@@ -37,24 +37,31 @@ const wide = (x1 = 1.9) => prepareSource({type: 'Polygon', coordinates: [[[lng(t
     [lng(tx + x1), lat(ty + 0.3)], [lng(tx + 0.6), lat(ty + 0.3)], [lng(tx + 0.6), lat(ty + 0.7)]]]}, {buffer: 128});
 const building = (x: number, x1?: number) => toGL(buildTile(sliceGeoJSON(wide(x1), z, x, ty), z, [compileLayer({id: 'b', type: 'fill-extrusion', source: 'g', paint: {'fill-extrusion-height': 10}})!], false)).tile.layers.b as any;
 
-// MapLibre GL JS lifts each piece of a polygon by the ground at the centroid of the piece, so on a slope the pieces in two
-// tiles stand at different heights and the building shows a step at the edge of the tile. A GeoJSON source gives every
-// piece the centroid of the whole polygon (#2185).
-test('fill-extrusion: the pieces of a GeoJSON polygon in two tiles carry the centroid of the whole polygon', () => {
+// MapLibre GL JS lifts each piece of a polygon by the ground at the centroid of the piece in its tile, so the centroid
+// lies in the elevation tile under that tile (#2287). A GeoJSON source does the same.
+test('fill-extrusion: each piece of a GeoJSON polygon in two tiles carries the centroid of the piece', () => {
     const centroids = (x: number) => {
         const b = building(x), set = new Set<string>();
-        for (let i = 0; i < b.c.length / 2; i++) set.add(`${b.c[i * 2] + (x - tx) * EXTENT},${b.c[i * 2 + 1]}`);
-        return [...set];
+        for (let i = 0; i < b.c.length / 2; i++) set.add(`${b.c[i * 2]},${b.c[i * 2 + 1]}`);
+        return [...set].map(k => k.split(',').map(Number));
     };
-    const left = centroids(tx);
-    assert.equal(left.length, 1);
-    assert.deepEqual(centroids(tx + 1), left);
-    const [cx, cy] = left[0].split(',').map(Number);
-    assert.ok(Math.abs(cx - 1.25 * EXTENT) <= 1 && Math.abs(cy - 0.5 * EXTENT) <= 1, left[0]);
-    // A polygon to 3.9 tiles has its centroid at 2.25 tiles, more than half a tile past this tile, where the elevation
-    // tile under this tile does not reach: the piece keeps its own centroid (0.6 to 1.25 tiles), as in MapLibre GL JS.
-    const b = building(tx, 3.9);
-    assert.ok(Math.abs(b.c[0] - (0.6 + 1.25) / 2 * EXTENT) <= 1 && Math.abs(b.c[1] - 0.5 * EXTENT) <= 1, `${b.c[0]},${b.c[1]}`);
+    // The piece of the left tile runs from 0.6 tiles to the edge of the buffer (1.25 tiles); the piece of the right tile
+    // from the edge of the buffer (-0.25 tiles) to 0.9 tiles.
+    for (const [x, x0, x1] of [[tx, 0.6, 1.25], [tx + 1, -0.25, 0.9]]) {
+        const c = centroids(x);
+        assert.equal(c.length, 1);
+        assert.ok(Math.abs(c[0][0] - (x0 + x1) / 2 * EXTENT) <= 1 && Math.abs(c[0][1] - 0.5 * EXTENT) <= 1, `${x}: ${c[0]}`);
+    }
+});
+
+// A polygon whose outer ring lies wholly in the buffer of a tile is drawn by the next tile. As in MapLibre GL JS
+// (`isEntirelyOutside`), this tile draws no roof and no walls for it: its centroid would lie past the elevation tile
+// under this tile, so on 3D terrain it would float (#2287, where a z10 tile at the horizon drew it).
+test('fill-extrusion: a polygon wholly in the buffer of the tile is not drawn', () => {
+    // A rectangle from 0.6 to 0.9 tiles of x lies from -0.4 to -0.1 tiles in the next tile: its piece there, cut at the
+    // edge of the buffer (-0.25), lies wholly left of the tile. The tile of the rectangle draws it.
+    assert.equal(building(tx + 1, 0.9), undefined);
+    assert.ok(building(tx, 0.9));
 });
 
 // The clip of the source cuts a polygon along the edge of the buffer. Buildings are not cut at the edge of the tile, as in

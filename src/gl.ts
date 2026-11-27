@@ -187,8 +187,9 @@ in float v_blur; in float v_gap; in float v_aa;
 uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex; uniform vec2 u_patSize;
 uniform int u_cap;
 float outside(float t, float from, float to) { return max(max(from - t, t - to), 0.0); }
+// How far t is outside the part from..to of a period p, which repeats. A part of length 0 is far, unless keep.
+float span(float t, float from, float to, float p, bool keep) { return keep || to > from ? min(outside(t, from, to), min(outside(t, from - p, to - p), outside(t, from + p, to + p))) : 99.0; }
 in vec4 v_color; in vec2 v_tile; in float v_d; in float v_hw; in float v_w; in float v_dist; in float v_persp; in float v_fw; out vec4 o;
-uniform float u_zf;
 void main() {
   ${FS_CLIP}
   vec4 c = v_color * u_color;
@@ -198,19 +199,20 @@ void main() {
   if (v_gap > 0.0) a *= clamp((abs(v_d) - v_gap * 0.5 - 0.5 * v_aa + bl) / bl, 0.0, 1.0);
   float period = u_dash.x + u_dash.y + u_dash.z + u_dash.w;
   if (period > 0.0 && u_patSize.x <= 0.0) { // a pattern replaces the dashes
-    // Dash lengths are in multiples of the line width. The gap is how far this point is outside the nearest dash.
-    float w = max(v_w, 0.5), fw = max(v_fw, 0.5), t = mod(v_dist * u_dashScale / fw, period), second = u_dash.x + u_dash.y;
-    float px = fw * u_zf; // screen pixels for each dash unit
-    float gap = min(min(outside(t, 0.0, u_dash.x), outside(t, period, period + u_dash.x)),
-                    min(outside(t, second, second + u_dash.z), outside(t, second - period, second - period + u_dash.z))) * px;
-    // A round cap makes each dash longer by half the line width. As in MapLibre GL JS, a square cap does not: its
-    // dashes end as butt dashes. (The round cap takes the smaller coverage, so that the sides are not softened twice.)
-    if (u_cap == 1) a = min(a, c.a * clamp((w * 0.5 - length(vec2(gap, v_d)) + 0.5) / v_persp, 0.0, 1.0));
-    else {
-      // Butt caps: the signed distance to the dash end, so that the end is smooth over one pixel.
-      float inDash = t < second ? min(t, u_dash.x - t) : min(t - second, second + u_dash.z - t);
-      a *= clamp(inDash * px + 0.5, 0.0, 1.0);
-    }
+    // Dash lengths are in multiples of the line width. D is how far this point is outside the nearest dash, and G how
+    // far it is outside the nearest gap. As in MapLibre GL JS, a gap of length 0 joins two dashes, and a dash of length
+    // 0 draws nothing with butt caps and a dot with round caps.
+    // (h is half a texel of MapLibre's dash texture, 256 texels for each period: where it samples and the 128 / 255 of
+    // its middle each move the end of a dash by h, so that a dash is one texel longer.)
+    bool r = u_cap == 1;
+    float fw = max(v_fw, 0.5), h = period / 512.0, t = mod(v_dist * u_dashScale / fw - h, period), s = u_dash.x + u_dash.y, e = s + u_dash.z, n = v_d / v_hw * 0.5;
+    float D = min(span(t, 0.0, u_dash.x, period, r), span(t, s, e, period, r)), G = min(span(t, u_dash.x, s, period, false), span(t, e, period, period, false));
+    // As the dash texture of MapLibre GL JS: d is the signed distance to the end of the dash in pixels of the width at
+    // the whole zoom level (inside > 0), and the end is soft over one device pixel to each side of it (sdfgamma).
+    // A round cap ends each dash in half an ellipse, which reaches half the width at the whole zoom level along the
+    // line and the edge of the line across it. As in MapLibre, a square cap does not: its dashes end as butt dashes.
+    float d = fw * (h + (!r ? G - D : D > 0.0 ? 0.5 - length(vec2(D, n)) : length(vec2(G, 0.5 - abs(n)))));
+    a *= smoothstep(-v_aa, v_aa, d);
   }
   if (u_patSize.x > 0.0) {
     // line-pattern: the image repeats along the line, scaled so that its height is the line width.
@@ -426,7 +428,7 @@ out vec2 v_uv; out float v_alpha; out float v_sdf;
 void main() {
   vec4 c = toClip3(a_v.xy, ground(a_v.xy / ${EXTENT}.0));
   float s = mix(a_size.x, a_size.y, u_zt) * u_size, a = u_north + a_angle;
-  // On a tilted map, far icons are smaller and near icons are larger, by half of what the perspective does (as for labels).
+  // On a tilted map or the globe, far icons are smaller and near icons are larger, by half of what the perspective does (as for labels).
   if (u_persp > 0.0) s *= min(4.0, 0.5 + 0.5 * u_persp / c.w);
   // (icon-offset and the shift of icon-anchor turn with the icon, as in placeLabels.)
   mat2 turn = mat2(cos(a), sin(a), -sin(a), cos(a));
@@ -942,7 +944,7 @@ export class GLRenderer {
                     // (`icon-rotation-alignment`: an icon that is aligned with the map turns with the map.)
                     gl.uniform1f(u.u_north, p.iconAlign.eval(zoom) === 'map' ? -tr.bearing * Math.PI / 180 : 0);
                     // (A layer with `icon-offset` has no perspective ratio: see `CompiledLayer.fixedSize`.)
-                    gl.uniform1f(u.u_persp, tr.pitch && !L.fixedSize ? tr.cameraDistance : 0);
+                    gl.uniform1f(u.u_persp, (tr.pitch || tr.globeness) && !L.fixedSize ? tr.cameraDistance : 0);
                     gl.uniform1f(u.u_dpr, this.dpr);
                     gl.uniform2f(u.u_offset, offset[0], offset[1]);
                     gl.uniform2f(u.u_anchor, anchor.includes('left') ? 0.5 : anchor.includes('right') ? -0.5 : 0, anchor.includes('top') ? 0.5 : anchor.includes('bottom') ? -0.5 : 0);
@@ -1303,7 +1305,6 @@ export class GLRenderer {
                         gl.uniform1f(u.u_width, L.p.width.dd ? 1 : L.p.width.eval(zoom));
                         gl.uniform1f(u.u_dpr, this.dpr);
                         gl.uniform1f(u.u_floorWidth, L.p.width.dd ? 1 : L.p.width.eval(Math.floor(zoom)));
-                        gl.uniform1f(u.u_zf, 2 ** (zoom - Math.floor(zoom)));
                         gl.uniform1f(u.u_gap, L.p.gap.dd ? 0 : L.p.gap.eval(zoom));
                         gl.uniform1f(u.u_offset, L.p.offset.dd ? 0 : L.p.offset.eval(zoom));
                         gl.uniform1f(u.u_blur, L.p.blur.dd ? 0 : L.p.blur.eval(zoom));

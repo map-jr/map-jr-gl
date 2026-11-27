@@ -48,7 +48,8 @@ test('globe: a tile without globe is byte for byte what it was before the cut ex
     // The hash of the tile of the fixture as main built it before #463 PR 2 (fills, data-driven colours, lines, buildings).
     // (Updated by #1706 and #1981, which changed the joins of lines, by #2118, which packs line vertices in halves of a tile
     // unit, by #2114, which stores how line-offset moves a flipbevel in the side of its vertices, and by #2185, which
-    // gives a building no wall along the edge of the buffer of the tile.)
+    // gives a building no wall along the edge of the buffer of the tile, and by #2287, which draws no building that lies
+    // wholly in the buffer.)
     const h = createHash('sha256'), flat = tile();
     // (A field that is undefined carries no data, and is left out: #2075 gave a line and a building such fields. The
     // code of main before #2075 gives the same hash.)
@@ -58,7 +59,7 @@ test('globe: a tile without globe is byte for byte what it was before the cut ex
         h.update(id + k);
         h.update(ArrayBuffer.isView(v) ? new Uint8Array(v.buffer, v.byteOffset, v.byteLength) : String(JSON.stringify(v)));
     }
-    assert.equal(h.digest('hex'), '38663afe977638e8080324145fcb67481632135acc7ec19c1e929e533d266d3c');
+    assert.equal(h.digest('hex'), '64bf3dce4de1b4650c27f0c57ba4f30acfc2b3bb6d35b8781b5a6a164d44f947');
 });
 
 test('globe: the fills and lines of a real tile get the vertices that were measured', () => {
@@ -70,8 +71,9 @@ test('globe: the fills and lines of a real tile get the vertices that were measu
     assert.deepEqual(g40.water, [6290, 8390]);
     assert.deepEqual(g40.land, [1720, 1316]);
     assert.deepEqual([flat.roads[1], g20.roads[1], g40.roads[1]], [35044, 42546, 49744]); // (corners sharper than 75 degrees get one more pair of vertices on each segment, #1706 and #2118)
-    // Buildings: roofs and walls are cut too (#1442). An edge along the buffer of the tile has no wall (#2185).
-    assert.deepEqual([flat.buildings[1], g40.buildings[1]], [40806, 65632]);
+    // Buildings: roofs and walls are cut too (#1442). An edge along the buffer of the tile has no wall (#2185),
+    // and a building wholly in the buffer is not drawn (#2287).
+    assert.deepEqual([flat.buildings[1], g40.buildings[1]], [39899, 64876]);
 });
 
 test('globe: a cut fill keeps its area, has no edge longer than a cell, and no cracks', () => {

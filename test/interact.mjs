@@ -687,6 +687,28 @@ for (const mode of renderers) {
         return log;
     });
     check(`[${mode}] an image with render() gets onAdd, render each frame and onRemove (#1746)`, anim.add === 1 && anim.id === 'pulse' && anim.renders >= 3 && anim.remove === 1 && anim.after === 0 && anim.idle, JSON.stringify(anim));
+    // #2279: new pixels from render() do not repaint, as in MapLibre GL JS: without triggerRepaint() the image does not keep
+    // the map drawing. (A map of its own: the demo map draws for other reasons. The slow render() makes the pixels arrive
+    // more than 100 ms after the frame, as on a loaded runner, where the frame that follows a pause called render() again.)
+    const still = await page.evaluate(async renderer => {
+        const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
+        const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#123'}}]}, renderer, attributionControl: false});
+        await new Promise(r => m.once('idle', r));
+        let renders = 0, frames = 0;
+        await m.addImage('new-pixels', {width: 1, height: 1, data: new Uint8Array(4), render() { renders++; for (const t = performance.now(); performance.now() - t < 150;); this.data = new Uint8Array(4).fill(renders % 255); return true; }});
+        m.addLayer({id: 'use', type: 'background', paint: {'background-pattern': 'new-pixels', 'background-opacity': 0}});
+        m.triggerRepaint();
+        const t0 = performance.now();
+        while (!renders && performance.now() - t0 < 5000) await new Promise(r => setTimeout(r, 50));
+        await new Promise(r => setTimeout(r, 1000));
+        const r0 = renders;
+        m.on('render', () => frames++);
+        await new Promise(r => setTimeout(r, 1500));
+        m.remove(); el.remove();
+        return {first: r0, renders: renders - r0, frames};
+    }, mode);
+    check(`[${mode}] new pixels of render() do not repaint the map (#2279)`, still.first >= 1 && still.renders <= 3, JSON.stringify(still));
     // #2128: on the main renderer render() of an image runs before the frame, as in MapLibre GL JS, so that its pixels are in
     // that frame (the worker renderer does not wait, by the decision on #2128). (The listener of `render` is added before the
     // image: a hook on `render` would run after it.)
@@ -696,7 +718,7 @@ for (const mode of renderers) {
             const order = [], frame = () => order.push('F');
             window.map.on('render', frame);
             let n = 0;
-            await window.map.addImage('early', {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('R'); this.data = new Uint8Array(4).fill(++n); return true; }});
+            await window.map.addImage('early', {width: 1, height: 1, data: new Uint8Array(4), render() { order.push('R'); this.data = new Uint8Array(4).fill(++n); window.map.triggerRepaint(); return true; }});
             window.useImage('early');
             window.map.triggerRepaint();
             const t0 = performance.now();
@@ -2663,6 +2685,29 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures does not find an icon that collision hid, with both renderers (#2181)',
             ['main', 'worker'].every(r => hiddenIcons[r].join() === 'A,A'), JSON.stringify(hiddenIcons));
+        // Of two identical lines with an icon each, whose icons collide, the hidden one is not found over the view, and the
+        // shown one is found on its icon and not along the whole line: MapLibre GL JS finds only placed symbols (#2243).
+        const hiddenLineIcons = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const line = name => ({type: 'Feature', properties: {name}, geometry: {type: 'LineString', coordinates: [[-30, 0], [30, 0]]}});
+                const m = new mod.Map({container: el, renderer, center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [line('A'), line('B')]}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'symbol-spacing': 250, 'icon-image': 'sq'}}]}});
+                m.addImage('sq', {width: 32, height: 32, data: new Uint8Array(32 * 32 * 4).fill(255)});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const all = await m.queryRenderedFeatures({layers: ['t']}), a = m.project([-30, 0]), b = m.project([30, 0]);
+                let found = 0, points = 0;
+                for (let x = a.x + 5; x < b.x; x += 10, points++) if ((await m.queryRenderedFeatures([x, a.y], {layers: ['t']})).length) found++;
+                out[renderer] = {all: all.length, found, points};
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures finds a line with an icon only on its shown icon, with both renderers (#2243)',
+            ['main', 'worker'].every(r => hiddenLineIcons[r].all >= 1 && hiddenLineIcons[r].found >= 2 && hiddenLineIcons[r].found <= 12), JSON.stringify(hiddenLineIcons));
         // The glyph boxes of text on a line stay on the line: long text does not widen the query of a line with an icon of
         // the same layer, a glyph belongs to the street under it and not to a street that crosses the label's middle, and
         // on a map tilted by 60 degrees the boxes are centered on the line (#1735).
@@ -2682,7 +2727,10 @@ for (const mode of renderers) {
             const out = {};
             let {m, done} = await make([A, line([[30, -30], [30, 30]], 'V')], {'icon-image': ['case', ['==', ['get', 'name'], 'V'], 'dot', ''], 'text-allow-overlap': true});
             const v = m.project([30, 0]);
-            out.icon = [await ask(m, v.x, v.y + 20), await ask(m, v.x - 50, v.y + 20)];
+            // (The icon of V is drawn at the anchor of its label, which is not at the middle of the line: find it on the line.)
+            let at = 0;
+            for (let dy = -140; dy <= 140 && !at; dy++) if (await ask(m, v.x, v.y + dy) === 'V') at = dy;
+            out.icon = [await ask(m, v.x, v.y + at), await ask(m, v.x - 50, v.y + at)];
             done();
             ({m, done} = await make([A], {}));
             const a = m.project([-40, 0]), b = m.project([40, 0]), found = [];
@@ -2800,6 +2848,39 @@ for (const mode of renderers) {
         });
         check('[main] on the globe an icon on the ground off the center has the width and the height of MapLibre GL JS within 1.5 pixels, with and without icon-offset (#2194, #2012)',
             ['60,45', '-50,50', '60,45 offset', '-50,50 offset'].every(at => globeIcon['ml ' + at].every((v, i) => v > 10 && Math.abs(v - globeIcon['mjr ' + at][i]) <= 1.5)), JSON.stringify(globeIcon));
+        // On the globe at pitch 0 an icon that faces the viewer far from the center is smaller by the perspective ratio, as in
+        // MapLibre GL JS 6.17: a red icon of 40 pixels 55 degrees from the center is 37 × 36 pixels there. Without the ratio it
+        // was 40 × 40 (#2201). It is so with both renderers and for an icon that needs no place among the labels
+        // (`icon-allow-overlap`, drawn by the GPU), and on Mercator at pitch 0 the icon keeps its 40 pixels.
+        const globeFacing = await page.evaluate(async () => {
+            const out = {};
+            for (const [name, lib, proj, renderer, overlap] of [['ml globe', 'ml', 'globe', 'main', false], ['ml mercator', 'ml', 'mercator', 'main', false],
+                ['main', 'mjr', 'globe', 'main', false], ['worker', 'mjr', 'globe', 'worker', false], ['overlap', 'mjr', 'globe', 'main', true], ['mercator', 'mjr', 'mercator', 'main', false]]) {
+                const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:512px;height:512px'}));
+                const m = new mod.Map({container: el, renderer, center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, canvasContextAttributes: {preserveDrawingBuffer: true}, style: {version: 8, projection: {type: proj},
+                    sources: {p: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: proj === 'globe' ? [55, 0] : [40, 0]}}}},
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 's', type: 'symbol', source: 'p', layout: {'icon-image': 'red', ...overlap ? {'icon-allow-overlap': true, 'icon-ignore-placement': true} : {}}}]}});
+                const red = new Uint8Array(40 * 40 * 4);
+                for (let i = 0; i < red.length; i += 4) red.set([255, 0, 0, 255], i);
+                m.addImage('red', {width: 40, height: 40, data: red});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const bmp = await createImageBitmap(await new Promise(r => m.getCanvas().toBlob(r))), k = bmp.width / 512, c = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d');
+                c.drawImage(bmp, 0, 0);
+                const d = c.getImageData(0, 0, bmp.width, bmp.height).data, box = [Infinity, Infinity, -Infinity, -Infinity];
+                for (let y = 0; y < bmp.height; y++) for (let x = 0; x < bmp.width; x++) {
+                    const i = (y * bmp.width + x) * 4;
+                    if (d[i] > 200 && d[i + 1] < 100 && d[i + 2] < 100) box.splice(0, 4, Math.min(box[0], x), Math.min(box[1], y), Math.max(box[2], x + 1), Math.max(box[3], y + 1));
+                }
+                out[name] = [(box[2] - box[0]) / k, (box[3] - box[1]) / k];
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] on the globe at pitch 0 an icon that faces the viewer 55 degrees from the center has the size of MapLibre GL JS within 1 pixel, and 40 pixels on Mercator (#2201)',
+            globeFacing['ml globe'].every(v => v < 39) && ['main', 'worker', 'overlap'].every(n => globeFacing[n].every((v, i) => Math.abs(v - globeFacing['ml globe'][i]) <= 1))
+            && globeFacing.mercator.every((v, i) => v === 40 && globeFacing['ml mercator'][i] === 40), JSON.stringify(globeFacing));
         // A label with an icon and text on a curved line draws both, as MapLibre GL JS does: the icon at the anchor and
         // the text bent along the line (#1732). The line is an arc of about 180 pixels radius with the label at its top
         // (`line-center`), inside one tile so that no tile cuts it, and the ends of the text are lower on the screen than its middle.
@@ -8508,6 +8589,60 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
         const off = Math.max(...ours.flat().map((v, i) => Math.abs(v - ml.flat()[i])));
         check('[main] 3D terrain: getBounds at pitch 60 and 85 over a mountain gives the box of MapLibre GL JS 6.17 within 0.01° (#898)', off < 0.01, JSON.stringify({ours, ml}));
     } catch (e) { check('[main] 3D terrain: the check of getBounds at a high pitch ran (#898)', false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
+// 3D terrain: a fill-extrusion polygon that lies wholly in the buffer of a tile is drawn only by the tile that holds it, as
+// in MapLibre GL JS (`isEntirelyOutside`). A tile of zoom 10 to the north holds the north edge of this building in its
+// buffer. It drew a copy that stood on the ground at the edge of its elevation tile, kilometers up the slope, so the copy
+// floated above the roof (#2287).
+for (const mode of renderers) {
+    const page = await browser.newPage({viewport: {width: 1000, height: 700}});
+    await page.goto(origin + `/?renderer=${mode}&nomarkers`);
+    await page.waitForFunction(() => window.mapLoaded, null, {timeout: 30000});
+    try {
+        await page.evaluate(async ([mode]) => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            // A slope that rises 3 m for each 100 m to the north.
+            try { mod.removeProtocol('dem2287'); } catch { /* not added yet */ }
+            mod.addProtocol('dem2287', async request => {
+                const [z, x, y] = request.url.slice(10).split('/').map(Number), n = 2 ** z, c = new OffscreenCanvas(512, 512), g = c.getContext('2d'), img = g.createImageData(512, 512);
+                for (let j = 0; j < 512; j++) for (let i = 0; i < 512; i++) {
+                    const my = (y + (j + 0.5) / 512) / n, lat = 360 / Math.PI * Math.atan(Math.exp((180 - my * 360) * Math.PI / 180)) - 90;
+                    const v = 2000 + (lat - 46.01) * 110540 * 0.03 + 32768, k = (j * 512 + i) * 4;
+                    img.data[k] = Math.floor(v / 256); img.data[k + 1] = Math.floor(v) % 256; img.data[k + 2] = Math.floor((v % 1) * 256); img.data[k + 3] = 255;
+                }
+                g.putImageData(img, 0, 0);
+                return {data: await (await c.convertToBlob()).arrayBuffer()};
+            });
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'map2287', style: 'position:fixed;left:0;top:0;width:800px;height:600px;z-index:9;background:#fff'}));
+            const poly = {type: 'Polygon', coordinates: [[[7.766, 46.0075], [7.774, 46.0075], [7.774, 46.0125], [7.766, 46.0125], [7.766, 46.0075]]]};
+            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: ['dem2287://{z}/{x}/{y}'], tileSize: 512, encoding: 'terrarium', maxzoom: 12}, b: {type: 'geojson', data: poly}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                    {id: 'x', type: 'fill-extrusion', source: 'b', paint: {'fill-extrusion-color': '#f00', 'fill-extrusion-height': 40, 'fill-extrusion-vertical-gradient': false}}],
+                terrain: {source: 'dem', exaggeration: 1}};
+            const m = new mod.Map({container: el, renderer: mode, style, center: [7.77, 46.01], zoom: 15, pitch: 65, attributionControl: false});
+            await new Promise(r => m.once('load', r));
+            await new Promise(r => { const t = setTimeout(r, 8000); m.once('idle', () => { clearTimeout(t); setTimeout(r, 500); }); m.triggerRepaint(); });
+        }, [mode]);
+        // Each column of the picture crosses the building once: a copy above the roof makes a second run of red pixels.
+        const png = (await page.locator('#map2287').screenshot()).toString('base64');
+        const roof = await page.evaluate(async png => {
+            const bm = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob());
+            const g = new OffscreenCanvas(bm.width, bm.height).getContext('2d'); g.drawImage(bm, 0, 0);
+            const d = g.getImageData(0, 0, bm.width, bm.height).data;
+            const count = [];
+            for (let x = 0; x < bm.width; x++) {
+                let n = 0, was = false;
+                for (let y = 0; y < bm.height; y++) { const k = (y * bm.width + x) * 4, red = d[k] > 100 && d[k + 1] < 90 && d[k + 2] < 90; if (red && !was) n++; was = red; }
+                count.push(n);
+            }
+            // (The middle three fifths of the building: at its corners a wall can stand apart from the roof.)
+            const cols = count.map((n, x) => n ? x : -1).filter(x => x >= 0), a = cols[0], w = cols.at(-1) - a, columns = cols.length;
+            const runs = Math.max(...count.slice(Math.round(a + w / 5), Math.round(a + w * 4 / 5)));
+            return {runs, columns};
+        }, png);
+        check(`[${mode}] 3D terrain: a tile that holds a building only in its buffer draws no copy of it above the roof (#2287)`, roof.columns > 100 && roof.runs === 1, JSON.stringify(roof));
+    } catch (e) { check(`[${mode}] 3D terrain: the check of a building in the buffer of a tile ran (#2287)`, false, String(e.message).split('\n')[0]); }
     await page.close();
 }
 // 3D terrain: `idle` waits for the raster tiles that only the pictures of the ground draw (#1493). Those tiles answer
