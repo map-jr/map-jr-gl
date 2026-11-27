@@ -55,8 +55,8 @@ const fromUrl = async (partName: PartName) => {
     return scope.MapJrPart;
 };
 
-/** The URL of the page that started this worker (see `ref` below). */
-let referrer = '';
+/** The URL and the referrer policy of the page that started this worker (see `ref` below). */
+let referrer = '', policy = '' as ReferrerPolicy;
 /** The ports of the maps that this worker serves tiles for, by the id that the page gave each. */
 const tilePorts = new Map<number, MessagePort>();
 scope.onmessage = e => {
@@ -64,9 +64,15 @@ scope.onmessage = e => {
     // (The page sends the URLs of the parts with each role. The standalone build sends none: its worker has them inside.)
     if (m.parts) { partUrls = m.parts; setPartLoader(fromUrl); }
     // A worker that starts from a blob: URL sends no Referer, and some tile servers (OpenStreetMap) then refuse the
-    // request (#2347). Each request of this worker that names no referrer of its own sends the page's URL, as MapLibre
-    // GL JS does (`getReferrer`). The page's referrer policy still applies, and the URL is the same for every map of a page.
-    if (m.ref && !referrer) { referrer = m.ref; const f = self.fetch; self.fetch = (input, init) => f(input, init?.referrer == null ? {...init, referrer} : init); }
+    // request (#2347). Each request of this worker that names no referrer of its own sends the page's URL under the
+    // page's referrer policy, as MapLibre GL JS does (`getReferrer`). Both are the same for every map of a page.
+    // (A `Request` reads `about:client` when it names no referrer.)
+    // (The latest map that connects gives the policy: a `<meta name="referrer">` can change while the page runs.)
+    if (m.ref) {
+        const f = !referrer && self.fetch;
+        [referrer, policy] = m.ref;
+        if (f) self.fetch = (input, init) => f(input, init?.referrer != null || ((input as Request).referrer ?? 'about:client') != 'about:client' ? init : {...init, referrer, referrerPolicy: init?.referrerPolicy ?? policy});
+    }
     for (const name of m.coming ?? []) given(name);
     if (m.role === 'part') given(m.name).done(m.code);
     // A warning goes through the port of any map that is still open: the page prints each once, whichever map it came from.
