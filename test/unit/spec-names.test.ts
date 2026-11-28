@@ -24,3 +24,10 @@ test('the built SPEC leaves out the layer types (`text` in a symbol layer) and h
     const built = new Function('ANCHORS', js)([]) as typeof SPEC;
     for (const type of Object.keys(SPEC)) for (const key of Object.keys(SPEC[type])) assert.equal(built[type][key][0], SPEC[type][key][0], `${type}.${key}`);
 });
+
+test('specNames gives the same edits on a CRLF copy of a small SPEC (#2610)', () => {
+    const lf = "\nexport const SPEC: X = {\n    fill: {\n        opacity: ['fill-opacity', 1],\n    },\n};\n";
+    const crlf = lf.replace(/\n/g, '\r\n');
+    assert.equal(specNames(crlf).length, specNames(lf).length);
+    assert.ok(!apply(crlf).includes("'fill-opacity'"));
+});

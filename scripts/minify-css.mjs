@@ -7,11 +7,11 @@
  * @returns `[start, end, text]` for each template literal of `CONTROL_CSS`, in the order of `code`.
  */
 export function minifyControlCss(code) {
-    const start = code.indexOf('\nexport const CONTROL_CSS = `'), end = code.indexOf('\n`;\n', start);
+    const start = code.indexOf('\nexport const CONTROL_CSS = `'), end = code.slice(start).search(/\n`;\r?\n/) + start;
     if (start < 0 || end < 0) throw new Error('scripts/minify-css.mjs: src/controls.ts has no "export const CONTROL_CSS = `" that ends with a line "`;".');
     const out = [];
     for (const m of code.slice(start, end + 2).matchAll(/`([^`$\\]*)`/g)) {
-        const text = m[1].replace(/\n[ \t]*/g, (_, at, all) => at === 0 || '{};,'.includes(all[at - 1]) ? '' : ' ');
+        const text = m[1].replace(/\r?\n[ \t]*/g, (_, at, all) => at === 0 || '{};,'.includes(all[at - 1]) ? '' : ' ');
         out.push([start + m.index, start + m.index + m[0].length, '`' + text + '`']);
     }
     return out;

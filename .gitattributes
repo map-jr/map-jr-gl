@@ -1,0 +1,16 @@
+# Text files are checked out with LF on every system, so that the build scripts, which read sources by lines, work on Windows (#2610).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.pbf binary
+*.pmtiles binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.gz binary
+*.zip binary
