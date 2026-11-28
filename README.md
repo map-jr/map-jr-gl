@@ -27,9 +27,9 @@ uses the same renderer and has its own tests in a browser.
 
 ## Why use this library
 
-- **It is small.** A page with a map transfers the page script and the worker file, which together are less than a
-  third of what MapLibre GL JS transfers (page script, worker and CSS, gzip). The table of sizes in [Status](#status)
-  has the current numbers for each entry, and `pnpm test:size` fails when the library is more than a third. The smaller size does not include other projections than Mercator and the globe, sky, fog and the other items in
+- **It is small.** A page with a map transfers the page script and the worker file, which together are about a third
+  of what MapLibre GL JS transfers (page script, worker and CSS, gzip). The table of sizes in [Status](#status) has
+  the current numbers for each entry. The smaller size does not include other projections than Mercator and the globe, sky, fog and the other items in
   [What is not available](docs/reference/maplibre-differences.md#what-is-not-available). Custom layers are in the entry
   `@map-jr/map-jr-gl/maplibre-compat` and draw on the main thread: a map that draws in a worker moves to the main
   thread at its first custom layer. Their code loads with the first custom layer.

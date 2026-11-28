@@ -18,7 +18,7 @@ const api = run('node test/conformance/api.mjs --write');
 const spec = run('node test/conformance/spec.mjs');
 // The totals follow from the status of each test and the labels, so they are computed here and not committed (#1861, #1915).
 const render = existsSync(root + 'test/conformance/render-tests.json') ? trackedSummary(new URL('../test/conformance/', import.meta.url)).totals : null;
-// The sizes are the bytes that `pnpm test:size` prints (scripts/size-check.mjs), which has the hard line.
+// The sizes are the bytes that `pnpm test:size` prints (scripts/size-check.mjs), which has the target and the limit.
 const bytes = (dir, files) => [...files].reduce((n, f) => n + gzipSync(readFileSync(root + dir + f)).length, 0);
 // A page script is the file of the entry and the files that it imports when it loads (not the ones that it imports on demand).
 const upFront = (file, seen = new Set()) => {

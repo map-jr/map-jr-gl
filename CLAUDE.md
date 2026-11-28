@@ -59,7 +59,7 @@ to protect those qualities.
 - **Merge with squash** once CI is green — you may merge your own pull request, **except** when the change does one
   of these. Then leave it open and ask the owner:
   - removes or renames public API of either entry, or changes a default;
-  - changes the hard line of the size or a ceiling in `scripts/size-check.mjs` (see "Size");
+  - changes the target or the limit of the size, or a ceiling, in `scripts/size-check.mjs` (see "Size");
   - adds a dependency to the built files, or takes code or a method from a project whose license is not on the list
     in "Code and methods from other projects";
   - changes this file or the release process (the workflow `Release` included);
@@ -203,22 +203,28 @@ fast time to idle (the map drawn and ready) comes before the size of the files t
 in every change, and do not spend an hour to save 50 bytes.
 
 - **Say what a change adds.** A pull request that changes `src/` gives the bytes (gzip) of each built file before and
-  after, from `pnpm test:size`. A change that adds more than about 0.3 KB to a page script, or 1 KB to the worker
-  file, says why the bytes are worth it.
+  after, from `pnpm test:size`, and how far each download then is from its target (the lines of the target that the
+  check prints). A change that adds more than about 0.3 KB to a page script, or 1 KB to the worker file, says why the
+  bytes are worth it.
+- **Say what a change costs in speed.** A pull request that changes the start of a map or the work of each frame
+  (the building of tiles, placement, a shader, the loop of frames) gives the time to idle and the script time of a
+  frame before and after, from `pnpm bench` (relative numbers: no GPU). After a series of merges, the coordinator
+  reads the results of the `Browsers` workflow and files a regression of speed as an issue.
 - **Do not make a usual map wait for a request.** Code that a usual map needs at the start stays in the files that
   load up front, because each file loaded on demand is one more request before the map is ready. A change that makes
   the map idle sooner can add bytes, and its pull request gives the time to idle before and after.
 - **Load on demand what only some maps need** (`import()`, as `src/hash.ts` and `src/pmtiles-info.ts` are). Code that
   only a developer needs goes into the development build (`src/mistakes.ts`). The build shortens the names of private
   class members and of the names in the shaders: declare members `private`, and name uniforms `u_...`.
-- **The hard line is a third of MapLibre GL JS.** For each entry, the page script that loads up front and the worker
-  file together stay under a third of what MapLibre GL JS downloads (its page script, its worker and its CSS).
-  `scripts/size-check.mjs` computes the limit, and the owner does not raise it. The other built files have wide
-  ceilings that only catch an accident. The line is not a target: keep each
-  change as small as it can be, and do not rewrite working code to save a few bytes.
-- **When the download comes within 5 KB of the line,** tell the owner, and start the pass for savings before more
-  features merge. Savings are found in that one pass before a release, by one worker whose pull request has only
-  that concern, and not in each pull request. Write a saving that you notice into the issue for that pass.
+- **The target is a third of MapLibre GL JS.** For each entry, the page script that loads up front and the worker
+  file together aim to stay under a third of what MapLibre GL JS downloads (its page script, its worker and its CSS).
+  Since 2026-11-28 the target does not block a merge (#2595): `scripts/size-check.mjs` prints the distance from the
+  target, and it fails only above 40% of MapLibre GL JS, which catches an accident. The other built files have wide
+  ceilings that also only catch an accident. Keep each change as small as it can be, and do not rewrite working code
+  to save a few bytes.
+- **Savings are found in one later pass** (#2596), after the cluster issues of #2577 have merged and before the
+  release 1.0, by one worker whose pull request has only that concern, and not in each pull request. Write a saving
+  that you notice into the issue for that pass.
 
 ## Commands
 
