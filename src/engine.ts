@@ -501,15 +501,15 @@ export class Engine {
     }
 
     /**
-     * Whether the source of 3D terrain has no elevation data at a mercator position at all: its tile of the lowest level
-     * there came back as a 404 or empty. The ground there is at sea level, as in MapLibre GL JS, and the camera does not
-     * wait for its height (#1820).
+     * Whether the source of 3D terrain has no elevation data at a mercator position for now: its tile of the lowest level
+     * there came back empty, or failed (a 404, a 5xx, a network error), or is being requested again after a failure. The
+     * ground there is at sea level, as in MapLibre GL JS, and the camera does not wait for its height (#1820, #2589).
      */
     private demNone(x: number, y: number): boolean {
         const terrain = this.style.terrain, src = terrain && this.style.sources[terrain.source];
         if (!src) return false;
         const n = 2 ** src.minzoom, t = this.tiles.get(`${terrain!.source}|${src.minzoom}/${Math.floor(x * n)}/${Math.floor(y * n)}`);
-        return !!t && (t.state === 'error' && !!t.missing || t.state === 'ok' && !t.gl?.raw);
+        return !!t && (t.state === 'error' || t.state === 'loading' && !!t.tries || t.state === 'ok' && !t.gl?.raw);
     }
 
     /** Ground height at a mercator position in meters (exaggerated), from the best elevation tile loaded so far. */
@@ -2088,8 +2088,9 @@ export class Engine {
             globeScene = {m: Float32Array.from(f.m), horizon: f.horizon, cam: f.cam, rays: tr.globe!.rays(tr), t: globeness, cosLat: Math.cos(Math.min(Math.abs(tr.lat), 85.051129) * Math.PI / 180), tiles: tr.tileCover(0, 5, TILE_SIZE)};
         }
         const behind = hold || this.renderer.render({tr, layers: this.layers, items, labels, atlas: this.atlas, icon: this.pattern, light: this.style.light, sky: this.style.sky, moving: settling, globe: globeScene, layerCode: this.layerCode,
-            // (Past the time limit and still unplaced: draw flat rather than raise terrain around a camera in the wrong place.)
-            terrain: ground && !unplaced ? {exaggeration: this.exaggeration, tiles: ground, dem: this.demRef, code: this.terrainCode!} : undefined});
+            // (Past the time limit and still unplaced: draw the ground flat, with its draped layers, rather than raise
+            // terrain around a camera in the wrong place; #2589.)
+            terrain: ground ? {exaggeration: unplaced ? 0 : this.exaggeration, tiles: ground, dem: this.demRef, code: this.terrainCode!} : undefined});
 
         if (cameraChanged || animating !== this.moving) {
             this.lastCamera = camera;
