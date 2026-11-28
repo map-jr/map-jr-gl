@@ -362,6 +362,16 @@ test('queries: a feature without an id in the buffer of a tile is left out, so t
     assert.deepEqual(found.map(f => f.id ?? f.properties.x), [50, 'line', 7]);
 });
 
+test('queries: a symbol layer gives each feature its tile and place, and gives a listed feature whose line is far from the box (#2460)', () => {
+    const line = (y: number) => ({type: 2, id: undefined, properties: {y}, geometry: (_e: number, c: number[], ends: number[]) => { c.push(0, y, 100, y); ends.push(2); }});
+    const layers = {l: {features: [line(10), line(3000), line(4000)]}} as never;
+    const q = {source: 's', z: 3, x: 5, y: 6, px: 0, py: 0, radius: 0, box: [0, 0, 100, 100] as [number, number, number, number]};
+    const sets = (at?: number[]) => [{layer: 'a', sourceLayer: 'l', radius: 0, at}];
+    assert.deepEqual(queryTile(layers, {...q, sets: sets()}).map(f => [f.properties.y, f.at]), [[10, undefined]]);
+    assert.deepEqual(queryTile(layers, {...q, sets: sets([])}).map(f => [f.properties.y, f.at]), [[10, '3/5/6/0']]);
+    assert.deepEqual(queryTile(layers, {...q, sets: sets([2])}).map(f => [f.properties.y, f.at]), [[10, '3/5/6/0'], [4000, '3/5/6/2']]);
+});
+
 test('elevation: Terrarium and Mapbox encodings decode, with interpolation between pixels', () => {
     // 2x1 image: 100 m and 200 m, Terrarium encoded (R * 256 + G + B / 256 - 32768).
     const px = (m: number) => { const v = m + 32768; return [Math.floor(v / 256), Math.floor(v % 256), 0, 255]; };

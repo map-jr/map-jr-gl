@@ -63,7 +63,7 @@ export class TileBuilder {
     decodeImage?: ImageDecoder;
     /** Tells the builder how each contour source derives its lines. */
     /** `ids`: the `promoteId` of each vector source that has one. */
-    setContours(sources: Record<string, ContourConfig>, ids: Record<string, string | Record<string, string>> = {}) { this.contours = new Map(Object.entries(sources)); this.ids = ids; }
+    setContours(sources: Record<string, ContourConfig>, ids: Record<string, string | Record<string, string>> = {}) { this.contours = new Map(Object.entries(sources)); this.ids = ids; this.asked.clear(); }
     private ids: Record<string, string | Record<string, string>> = {};
 
     /**
@@ -84,7 +84,7 @@ export class TileBuilder {
         return got.dem.then(d => (seen(got.expires), d));
     };
     /** A contour tile expires when the first of its elevation tiles does. */
-    private async contour(url: string): Promise<{layers: Parameters<typeof buildTile>[0]; expires?: number}> {
+    private async contour(url: string): Promise<{layers: TileLayers; expires?: number}> {
         const m = /^contour:\/\/(.*)\/(\d+)\/(\d+)\/(\d+)$/.exec(url)!, cfg = this.contours.get(m[1]);
         if (!cfg) return {layers: {}};
         const c = await part('dem');
@@ -194,14 +194,14 @@ export class TileBuilder {
     private geo?: Promise<void>;
 
     /** Builds a tile. (`within` and `distance` see the tile through `geo.tile`, which is set right before.) */
-    private build(data: Parameters<typeof buildTile>[0], req: TileRequest): TileIR {
+    private build(data: TileLayers, req: TileRequest): TileIR {
         geo.tile = req.at;
         let layers = this.bySource.get(req.source) ?? [];
         if (req.state) {
             layers = layers.filter(L => req.state!.layers.includes(L.id));
             // (The features of the tile whose state changed: none means that the tile would be built as it is.)
-            const changed = req.state.changed && new Set(req.state.changed), vt = data as TileLayers;
-            if (changed && !(data instanceof Uint8Array) && !layers.some(L => vt[L.sourceLayer ?? GEOJSON_LAYER]?.features.some(f => f.id !== undefined && changed.has(`${L.sourceLayer ?? ''}|${f.id}`)))) return {layers: {}, labels: {}, same: true};
+            const changed = req.state.changed && new Set(req.state.changed);
+            if (changed && !layers.some(L => data[L.sourceLayer ?? GEOJSON_LAYER]?.features.some(f => changed.has(`${L.sourceLayer ?? ''}|${f.id}`)))) return {layers: {}, labels: {}, same: true};
         }
         return buildTile(data, req.z, layers, req.overscaled, this.states.f, this.templates, req.direct);
     }
@@ -222,9 +222,9 @@ export class TileBuilder {
             }
             if (!bytes) return {layers: {}, labels: {}, expires: st.expires, etag: st.etag};
             if (n === this.forgotten) this.remember(key, bytes);
-            // (A build for feature state reads the tile that the worker keeps decoded for queries, when it has it: a pointer
-            // over the map changes the state again and again.)
-            return {...bytes.length ? this.build(req.state ? this.decoded(key, bytes, req.source).layers : decodeVectorTile(bytes, this.ids[req.source]), req) : {layers: {}, labels: {}}, expires: st.expires, etag: st.etag};
+            // (The decoded tile is kept for the builds and the queries that follow: a pointer over the map changes the
+            // feature state again and again, and asks what is under it.)
+            return {...bytes.length ? this.build(this.decoded(key, bytes, req.source).layers, req) : {layers: {}, labels: {}}, expires: st.expires, etag: st.etag};
         } finally {
             this.aborts.delete(req.id);
         }
@@ -240,7 +240,7 @@ export class TileBuilder {
         this.forgotten++;
         for (const key of this.loading.keys()) if (!source || key.startsWith(source + '|')) this.loading.delete(key);
         for (const key of this.recent.keys()) if (!source || key.startsWith(source + '|')) this.recent.delete(key);
-        for (const key of this.asked.keys()) if (!source || key.startsWith(source + '|')) this.asked.delete(key);
+        this.asked.clear();
         this.dems.clear();
     }
 
@@ -260,7 +260,7 @@ export class TileBuilder {
      * milliseconds. A build for feature state reads them too. An entry is that of the bytes that the worker has for the tile and of the ids of the source, so a
      * tile that was loaded again, or a source with another `promoteId`, is decoded again.
      */
-    private asked = new Map<string, {bytes: Uint8Array; ids: unknown; layers: TileLayers; boxes: TileBoxes}>();
+    private asked = new Map<string, {bytes: Uint8Array; layers: TileLayers; boxes: TileBoxes}>();
     async query(url: string, q: TileQuery): Promise<QueriedFeature[]> {
         // The code of the queries is a part that loads on demand (parts.ts): it loads while the tile is read.
         const code = part('query');
@@ -284,10 +284,10 @@ export class TileBuilder {
     }
     /** The decoded tile of `asked` for these bytes, which becomes the entry that was asked last. */
     private decoded(key: string, bytes: Uint8Array, source: string) {
-        const ids = this.ids[source];
         let entry = this.asked.get(key);
         this.asked.delete(key);
-        if (entry?.bytes !== bytes || entry.ids !== ids) entry = {bytes, ids, layers: decodeVectorTile(bytes, ids), boxes: {}};
+        // (An entry is for the bytes that were fetched last, and for the `promoteId` of the sources: `setContours` drops all.)
+        if (entry?.bytes !== bytes) entry = {bytes, layers: decodeVectorTile(bytes, this.ids[source]), boxes: {}};
         // (The entry that was asked last is the last of the map; the one asked longest ago goes.)
         this.asked.set(key, entry);
         if (this.asked.size > ASKED_TILES) this.asked.delete(this.asked.keys().next().value!);

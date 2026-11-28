@@ -152,28 +152,31 @@ for (const mode of renderers) {
     // (`toBlob` waits for `idle`, so a screenshot of the page reads the colour in the middle.)
     const transitions = await (async () => {
         const red = async () => page.evaluate(async png => { const bmp = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: 1, height: 1}).getContext('2d'); c.drawImage(bmp, 0, 0); return c.getImageData(0, 0, 1, 1).data[0]; }, (await page.screenshot({clip: {x: 50, y: 40, width: 1, height: 1}})).toString('base64'));
-        const wait = ms => new Promise(r => setTimeout(r, ms)), idle = () => page.evaluate(() => new Promise(r => window.transitionMap.once('idle', r))), out = {};
+        const wait = ms => new Promise(r => setTimeout(r, ms)), out = {};
+        // (`idled` is set by the first `idle` after a change. The listener goes on with the change, because a slow machine can
+        // finish the transition before the next step of the check, and a listener added after that `idle` waits forever; #2138.)
+        const idle = what => page.waitForFunction(() => window.idled, null, {polling: 50, timeout: 20000}).catch(() => { throw new Error(`no idle within 20 s after ${what}`); });
         await page.evaluate(async renderer => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
             const style = window.transitionStyle = c => ({version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': c, 'background-color-transition': {duration: 3000, delay: 0}}}]});
             const el = window.transitionEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:100px;height:80px;z-index:99999'}));
             const m = window.transitionMap = new mod.Map({container: el, style: style('#000'), center: [0, 0], zoom: 1, renderer, attributionControl: false});
-            await new Promise(r => m.once('idle', r));
+            if (!await new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 20000); })) throw new Error('no first idle within 20 s');
         }, mode);
         await wait(100);
         out.start = await red();
         await page.evaluate(() => { window.idled = false; window.transitionMap.setPaintProperty('bg', 'background-color', '#f00'); window.transitionMap.once('idle', () => window.idled = true); });
         await wait(1500);
         out.middle = await red(); out.idleInMiddle = await page.evaluate(() => window.idled);
-        await idle(); await wait(100); out.end = await red();
-        await page.evaluate(() => window.transitionMap.setStyle(window.transitionStyle('#000')));
+        await idle('setPaintProperty'); await wait(100); out.end = await red();
+        await page.evaluate(() => { window.idled = false; window.transitionMap.setStyle(window.transitionStyle('#000')); window.transitionMap.once('idle', () => window.idled = true); });
         await wait(1500); out.diffMiddle = await red();
-        await idle();
+        await idle('setStyle with diff');
         await page.evaluate(() => window.transitionMap.setStyle(window.transitionStyle('#f00'), {diff: false}));
         await wait(300); out.instant = await red();
         await page.evaluate(() => { window.transitionMap.remove(); window.transitionEl.remove(); });
         return out;
-    })().catch(e => ({error: String(e)}));
+    })().catch(async e => { await page.evaluate(() => { window.transitionMap?.remove(); window.transitionEl?.remove(); }).catch(() => {}); return {error: String(e)}; });
     check(`[${mode}] paint transitions: setPaintProperty and setStyle with diff move a colour over its transition, idle waits, diff: false is at once (#960)`,
         transitions.start === 0 && transitions.middle > 40 && transitions.middle < 215 && !transitions.idleInMiddle && transitions.end === 255 && transitions.diffMiddle > 40 && transitions.diffMiddle < 215 && transitions.instant === 255, JSON.stringify(transitions));
 
@@ -753,8 +756,7 @@ for (const mode of renderers) {
             await new Promise(r => m.once('load', r));
             const log = [];
             for (const t of ['movestart', 'zoomstart', 'move', 'zoom', 'zoomend', 'moveend']) m.on(t, () => log.push(t));
-            // (MapLibre GL JS reads `around` as a position, and this entry reads a point of the screen in CSS pixels.)
-            m.easeTo({zoom: 5, duration: 0, around: lib === 'ml' ? m.unproject([100, 100]) : [100, 100]});
+            m.easeTo({zoom: 5, duration: 0, around: m.unproject([100, 100])});
             const sync = log.join(' '), c = m.getCenter(), z = m.getZoom();
             await new Promise(r => setTimeout(r, 800));
             m.remove(); el.remove();
@@ -763,6 +765,33 @@ for (const mode of renderers) {
         const aroundOurs = await aroundJump('ours'), aroundMl = await aroundJump('ml');
         check(`[${mode}] easeTo with around and duration 0 fires its events once, inside the call, as in MapLibre GL JS (#2394)`,
             aroundOurs === aroundMl && aroundMl.startsWith('movestart zoomstart move zoom zoomend moveend [') && aroundMl.endsWith(' 6'), JSON.stringify({aroundOurs, aroundMl}));
+        // `around` of easeTo is a position (any form of LngLatLike), not a point of the screen, and flyTo ignores it:
+        // the center after the move is the one of MapLibre GL JS (#2424).
+        const aroundAt = (lib, how, pg = page) => pg.evaluate(async ([lib, renderer, how]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const done = new Promise(r => m.once('moveend', r));
+            if (how === 'ease') m.easeTo({zoom: 5, duration: 0, around: [20, 20]});
+            else if (how === 'easeAnimated') m.easeTo({zoom: 5, duration: 200, around: {lng: 20, lat: 20}});
+            else if (how === 'fly') m.flyTo({zoom: 5, duration: 200, around: [20, 20], essential: true}); // (a flight ignores `around`)
+            else m.flyTo({zoom: 5, around: [20, 20]}); // (with reduced motion, flyTo is an easeTo, which reads `around`)
+            await done;
+            const c = m.getCenter(), z = m.getZoom();
+            m.remove(); el.remove();
+            return [+z.toFixed(3), +c.lng.toFixed(2), +c.lat.toFixed(2)];
+        }, [lib, mode, how]).catch(e => String(e));
+        for (const how of ['ease', 'easeAnimated', 'fly', 'flyReduced']) {
+            // (MapLibre GL JS reads the preference when its module loads, so the reduced-motion case has a page of its own.)
+            const pg = how === 'flyReduced' ? await browser.newPage({reducedMotion: 'reduce'}) : page;
+            if (pg !== page) { await pg.goto(`${origin}/?renderer=${mode}`); await pg.waitForFunction(() => window.mapLoaded, null, {timeout: 30000}); }
+            const [o, ml] = [await aroundAt('ours', how, pg), await aroundAt('ml', how, pg)];
+            if (pg !== page) await pg.close();
+            check(`[${mode}] ${how} with around as a position (flyTo ignores it) ends at the center of MapLibre GL JS (#2424)`,
+                Array.isArray(o) && Array.isArray(ml) && o.every((v, i) => Math.abs(v - ml[i]) < 0.02), JSON.stringify({o, ml}));
+        }
         // An easeTo or flyTo with no movement running fires movestart inside the call, also right after a jumpTo and for an
         // ease that leaves the view as it is, and the movement does not end before the animation, as in MapLibre GL JS (#2451).
         const firstEase = (lib, scenario) => page.evaluate(async ([lib, renderer, scenario]) => {
@@ -3395,14 +3424,47 @@ for (const mode of renderers) {
             out.cross = await ask(m, found[0] + 3, a.y);
             done();
             ({m, done} = await make([A], {'text-pitch-alignment': 'map', 'text-rotation-alignment': 'map'}, 60));
+            // (The text is found on the circles of placement, which end a little inside its first and last glyph: the column is
+            // the middle of the first circle that the row through the center of the map meets.)
             const c = m.project([0, 0]), across = [];
-            for (let dy = -30; dy <= 30; dy++) if (await ask(m, c.x, c.y + dy)) across.push(dy);
+            let left = 0;
+            while (left < 600 && !await ask(m, left, c.y)) left++;
+            for (let dy = -30; dy <= 30; dy++) if (await ask(m, left + 8, c.y + dy)) across.push(dy);
             out.pitch = [across[0], across.at(-1)];
             done();
             return out;
         });
         check('[main] queryRenderedFeatures: text on a line does not widen the query of a line with an icon, a glyph belongs to the street under it, and at pitch 60 the glyph boxes are centered on the line (#1735)',
             lineText.icon[0] === 'V' && lineText.icon[1] === '' && lineText.cross === 'A long label along the line' && lineText.pitch[0] < -5 && Math.abs(lineText.pitch[0] + lineText.pitch[1]) <= 2, JSON.stringify(lineText));
+        // A road that comes as three lines that meet end to end has one label, and the label belongs to one of the lines, as in
+        // MapLibre GL JS (#2460). A query of the whole view finds that line once, and a query on a glyph finds it where the glyph is,
+        // also over the part of the road that is another line. (The lines lie in one tile, and the label spans all three.)
+        const roadParts = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const line = (a, b) => ({type: 'Feature', properties: {name: 'A long label along the line'}, geometry: {type: 'LineString', coordinates: [a, b]}});
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const m = new mod.Map({container: el, renderer, center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [line([-40, 0], [-13, 0]), line([-13, 0], [13, 0]), line([13, 0], [40, 0])]}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-size': 16}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                // (The row through the road is scanned from end to end, because the text is found on its circles, which leave a gap
+                // between them and end inside its first and last glyph. `found` counts the hits in each of the three lines, and each line must have one.)
+                const y = m.project([0, 0]).y, found = [0, 0, 0], a = m.project([-40, 0]).x, b = m.project([40, 0]).x;
+                let most = 0;
+                for (let x = a; x < b; x += 2) {
+                    const n = (await m.queryRenderedFeatures([x, y], {layers: ['t']})).length, lng = -40 + (x - a) / (b - a) * 80;
+                    most = Math.max(most, n);
+                    if (n) found[lng < -13 ? 0 : lng < 13 ? 1 : 2]++;
+                }
+                out[renderer] = {all: (await m.queryRenderedFeatures({layers: ['t']})).length, most, found};
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures finds the label of a road that comes as several lines once, with both renderers (#2460)',
+            ['main', 'worker'].every(r => roadParts[r].all === 1 && roadParts[r].most === 1 && roadParts[r].found.every(n => n > 0)), JSON.stringify(roadParts));
         // On the globe a query finds text on a line where its glyphs are drawn, as MapLibre GL JS does: the line between
         // two of its points is a curve on the screen, and the glyphs lie on that curve (#1995). The map is cut into cells
         // of 25 pixels; each cell with dark pixels of the text must be found by a query of the cell, at zoom 2.5 and across

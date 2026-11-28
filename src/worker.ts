@@ -9,7 +9,7 @@ import {part, setPartLoader, type PartName} from './parts.ts';
 // out, and reads them from `MapJrWorker`, the global of this file (see build.mjs).
 export {EXTENT, HEIGHT_GRID, TILE_SIZE, Transform, clamp, keepSize, latFromMerc, lngFromMerc, mercX, mercY, touches} from './geo.ts';
 export {SHADERS, VS_COMMON, FS_CLIP, opaque, skyValues} from './gl.ts';
-export {boxAround, flatSize, perspective, quadBox, renderItems} from './placement.ts';
+export {boxAround, flatSize, lineCircles, perspective, quadBox, renderItems} from './placement.ts';
 export {compileExpr, compileFilter, compileProp, parseColor, pickImage, warnOnce} from './expr.ts';
 export {SPEC, LIGHT_PROPS, isGeometrySource, screenTranslate, tileURL} from './style.ts';
 export {decodeElevation} from './elevation.ts';

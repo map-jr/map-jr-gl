@@ -92,6 +92,8 @@ export const patternKey = (id: string, k: number) => k ? id + '\0' + k : id;
 export const MAX_RUNS = 64;
 export interface LabelSrc {
     x: number; y: number; text: string;
+    /** The place of the feature in the layer of its tile, as `queryTile` counts it: a query finds the label's feature by it. A line made of several lines that meet (a road that comes in parts) belongs to the first of them that the tile has. */
+    at: number;
     /** `symbol-sort-key`, when the layer has one. */
     key?: number;
     /** Direction of the line at the anchor in tile space (radians), or null for point labels. */
@@ -156,7 +158,7 @@ export interface IconBatch {
 export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; /** A build of the layers that read feature state (`TileRequest.state`) for a tile that has none of the changed features: nothing was built. */ same?: boolean; /** When the fetched tile is out of date, and its `ETag` (see `TileFetchState`). */ expires?: number; etag?: string }
 
 export type GLBatch = {/** See `Batch.pat` and `Batch.dash`. */ pat?: string; dash?: number[]; /** See `cellsOf`. */ cells?: Float32Array} & (
-    | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
+    | {type: 'fill'; /** Whole tile units, or floats where a GeoJSON polygon has halves of a unit. */ pos: Int16Array | Float32Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array; /** See `Batch.lift`. */ lift?: boolean; /** The centroid of each vertex's polygon, in tile units: on 3D terrain the ground under it lifts the polygon. */ c: Int16Array}
     | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** See `Batch.feat`, for each vertex. */ feat?: Float32Array; featMask?: number; /** See `Batch.most`. */ most?: number[]}
     | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array; /** Each point is a grid of 4 × 4 corners, in sevenths (see `tessellate`). */ grid?: boolean; /** See `Batch.stroke`, `Batch.sb`, `Batch.feat` and `Batch.stroke1`, for each vertex. */ stroke?: Uint8Array; sb?: Float32Array; feat?: Float32Array; featMask?: number; stroke1?: Uint8Array});
@@ -217,7 +219,9 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             const plain = direct && !sorted && !p.iconAnchor.dd && !p.iconOffset.dd && !p.iconAlign.dd && !p.iconPitch.dd && p.iconPitch.eval(zs) !== 'map' && !(p.iconPitch.eval(zs) === 'auto' && p.iconAlign.eval(zs) === 'map') && !p.iconColor.dd && !p.iconPadding.dd;
             const iconNames = new Map<string, number>(), iconName: number[] = [], iconPos: number[] = [], iconRotate: number[] = [], iconSize: number[] = [], iconAlpha: number[] = [];
             let iconAvoid: boolean | undefined;
+            let at = -1;
             for (const f of vl.features) {
+                at++;
                 ctx.f = f;
                 f.state = f.id === undefined ? undefined : states?.[L.source!]?.[`${L.sourceLayer ?? ''}|${f.id}`];
                 if (L.filter && !L.filter(ctx)) continue;
@@ -248,7 +252,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 // `text-pitch-alignment` and `icon-pitch-alignment`: `auto` follows the rotation alignment.
                 const flat = (pitch: unknown, alignment: unknown) => pitch === 'map' || (pitch !== 'viewport' && !turns(alignment));
                 const base = {
-                    text, size0: p.size.eval(zs, f), size1: p.size.eval(z1, f), op,
+                    text, at, size0: p.size.eval(zs, f), size1: p.size.eval(z1, f), op,
                     color: [color[0], color[1], color[2], color[3] * op] as RGBA,
                     halo: [haloColor[0], haloColor[1], haloColor[2], haloColor[3] * op] as RGBA, haloWidth: p.haloWidth.eval(zs, f), haloBlur: p.haloBlur.eval(zs, f), rotate: p.rotate.eval(zs, f) * Math.PI / 180, justify: justification(p.justify.eval(zs, f), p.anchor.eval(zs, f)), font: fontKey(p.font.eval(zs, f)),
                     maxWidth: p.maxWidth.eval(zs, f), spacing: p.spacing.eval(zs, f), offset: p.offset.eval(zs, f), anchor: p.anchor.eval(zs, f),
@@ -430,9 +434,11 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 if (extrude) heights.push(lift ? 1 : Math.max(0, p.height.eval(zs, f))), bases.push(lift ? 0 : Math.max(0, p.base.eval(zs, f)));
             }
             if (!featEnds.length) continue;
+            // (A fill keeps halves only where a polygon has them, which is a GeoJSON source: the points of a vector tile are whole.)
+            const half = kind === 'line' || extrude || kind === 'fill' && coords.some(t => t % 1);
             const batch: Batch = {
                 type: kind as Batch['type'],
-                geom: {coords: kind === 'line' || extrude ? halves(coords) : Int16Array.from(coords, Math.round), ringEnds: Uint32Array.from(ringEnds), featEnds: Uint32Array.from(featEnds), half: kind === 'line' || extrude || undefined},
+                geom: {coords: half ? halves(coords) : Int16Array.from(coords, Math.round), ringEnds: Uint32Array.from(ringEnds), featEnds: Uint32Array.from(featEnds), half: half || undefined},
             };
             if (ddColor && !progress) batch.color = Uint8Array.from(color);
             if (progress) batch.progress = Float32Array.from(progress);
@@ -615,11 +621,11 @@ export function tessellate(b: Batch, globe?: GlobeCut, /** Gets the groups of th
     const idx: number[] = [];
     if (b.type === 'fill') {
         if (b.height) return tessellateExtrusion(b, globe, groups);
-        const color = b.color ? new Uint8Array(coords.length * 2) : undefined;
+        const color = b.color ? new Uint8Array(coords.length * 2) : undefined, pos = b.geom.half ? Float32Array.from(coords, t => t / 2) : coords as Int16Array;
         for (let f = 0; f < featEnds.length; f++) {
             eachPolygon(b.geom, f, (p0, p1, holes) => {
                 // (The box has the holes too: in a polygon that is not valid a hole can lie outside the outer ring.)
-                if (groups) group(groups, idx.length, coords, p0, p1, 1);
+                if (groups) group(groups, idx.length, coords, p0, p1, b.geom.half ? 2 : 1);
                 const tris = earcut(coords.subarray(p0 * 2, p1 * 2) as any, holes);
                 for (let i = 0; i < tris.length; i++) idx.push(tris[i] + p0);
                 if (color) for (let i = p0; i < p1; i++) color.set(b.color!.subarray(f * 4, f * 4 + 4), i * 4);
@@ -632,14 +638,14 @@ export function tessellate(b: Batch, globe?: GlobeCut, /** Gets the groups of th
         // have it, and the clip of the fragment shader gives each of its pixels to one tile (#2464).
         let edges: Uint32Array | undefined;
         if (b.antialias !== false || b.outline) {
-            const list: number[] = [], out = (i: number, j: number, k: number) => (coords[i * 2 + k] < 0 && coords[j * 2 + k] < 0) || (coords[i * 2 + k] > EXTENT && coords[j * 2 + k] > EXTENT);
+            const list: number[] = [], out = (i: number, j: number, k: number) => (pos[i * 2 + k] < 0 && pos[j * 2 + k] < 0) || (pos[i * 2 + k] > EXTENT && pos[j * 2 + k] > EXTENT);
             for (let r = 0; r < ringEnds.length; r++) {
                 const s = r ? ringEnds[r - 1] : 0, e = ringEnds[r];
                 for (let i = s, j = e - 1; i < e; j = i++) if (!out(i, j, 0) && !out(i, j, 1)) list.push(j, i);
             }
             edges = Uint32Array.from(list);
         }
-        return {type: 'fill', pos: coords as Int16Array, idx: Uint32Array.from(idx), color, edges};
+        return {type: 'fill', pos, idx: Uint32Array.from(idx), color, edges};
     }
 
     return tessellateLine(b, groups);
@@ -673,7 +679,8 @@ function cutRings(g: Geom, {grid, cutLine}: GlobeCut, closed: boolean): Geom {
  * points of the grid added (they keep the edges of the polygon, not those of the cut).
  */
 function tessellateGlobeFill(b: Batch, globe: GlobeCut): GLBatch | null {
-    const g = b.geom, features: {coords: Int16Array; holes: number[]}[][] = [];
+    // (The cut works in whole units: halves are rounded here.)
+    const g = b.geom.half ? {...b.geom, coords: Int16Array.from(b.geom.coords, t => Math.round(t / 2)), half: undefined} : b.geom, features: {coords: Int16Array; holes: number[]}[][] = [];
     for (let f = 0; f < g.featEnds.length; f++) {
         const polygons: {coords: Int16Array; holes: number[]}[] = [];
         eachPolygon(g, f, (p0, p1, holes) => polygons.push({coords: (g.coords as Int16Array).subarray(p0 * 2, p1 * 2), holes}));

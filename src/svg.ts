@@ -1,4 +1,4 @@
-import {type Transform, EXTENT, apply} from './geo.ts';
+import {type Transform, type TileID, EXTENT, apply} from './geo.ts';
 import type {CompiledLayer} from './style.ts';
 import type {Batch, TileImage, TileIR} from './tile.ts';
 import type {Sprite} from './style.ts';
@@ -15,38 +15,60 @@ const num = (v: number) => String(Math.round(v * 100) / 100);
 const alpha = (name: string, a: number) => a < 0.999 ? ` ${name}="${num(a)}"` : '';
 
 /**
- * Path data for one feature, or '' when nothing of it would be visible. `box` is the viewport in tile units;
- * `minSize` and `tol` (quantized units) drop features and vertices too small to see at this scale.
+ * Path data for one feature, or '' when nothing of it would be visible. `box` is the viewport in path units;
+ * `minSize` and `tol` (path units) drop features and vertices too small to see at this scale. Without `P`, a path unit
+ * is `Q` tile units; `P` puts the points of a ring (tile units) on the screen of a tilted view instead (see `cut`).
  */
-function pathData(b: Batch, f: number, close: boolean, box: number[], minSize: number, tol: number, cap?: Cap, off = 0): string {
+function pathData(b: Batch, f: number, close: boolean, box: number[], minSize: number, tol: number, cap?: Cap, off = 0, P?: (pts: number[], close: boolean) => number[][]): string {
     const {ringEnds, featEnds} = b.geom, k = b.geom.half ? 0.5 : 1;
-    let coords: ArrayLike<number> = b.geom.coords;
     let d = '';
     for (let r = f ? featEnds[f - 1] : 0; r < featEnds[f]; r++) {
-        const start = r ? ringEnds[r - 1] : 0, end = ringEnds[r];
-        if (off) coords = offsetLine(b.geom.coords, start, end, k, off);
-        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-        for (let i = start; i < end; i++) {
-            const x = coords[i * 2] * k, y = coords[i * 2 + 1] * k;
-            if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        const start = r ? ringEnds[r - 1] : 0, end = ringEnds[r], src = off ? offsetLine(b.geom.coords, start, end, k, off) : b.geom.coords, pts: number[] = [];
+        for (let i = start; i < end; i++) pts.push(src[i * 2] * k, src[i * 2 + 1] * k);
+        for (const q of P ? P(pts, close) : [pts.map(v => v / Q)]) {
+            let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+            for (let i = 0; i < q.length; i += 2) {
+                const x = q[i], y = q[i + 1];
+                if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+            }
+            if (x1 < box[0] || y1 < box[1] || x0 > box[2] || y0 > box[3] || x1 - x0 < minSize && y1 - y0 < minSize) continue;
+            let px = 0, py = 0, ring = '', n = 0, len = 0, sx = 0, sy = 0, ax = 0, ay = 0, bx = 0, by = 0;
+            for (let i = 0; i < q.length; i += 2) {
+                const x = Math.round(q[i]), y = Math.round(q[i + 1]);
+                if (!i) { ring = `M${x} ${y}`; n = 1; } else if (i === q.length - 2 ? (x !== px || y !== py) : Math.abs(x - px) + Math.abs(y - py) > tol) {
+                    const dx = x - px, dy = y - py;
+                    ring += dy === 0 ? `h${dx}` : dx === 0 ? `v${dy}` : `l${dx} ${dy}`;
+                    if (n++ === 1) { sx = px; sy = py; ax = x; ay = y; }
+                    len += Math.hypot(dx, dy); bx = px; by = py;
+                } else continue;
+                px = x; py = y;
+            }
+            if (n >= (close ? 3 : 2)) d += close ? ring + 'z' : ring;
+            if (cap && n >= 2 && !close) cap.e += capEnds(cap, sx, sy, ax, ay, bx, by, px, py, len);
         }
-        if (x1 < box[0] || y1 < box[1] || x0 > box[2] || y0 > box[3]) continue;
-        if ((x1 - x0) / Q < minSize && (y1 - y0) / Q < minSize) continue;
-        let px = 0, py = 0, ring = '', n = 0, len = 0, sx = 0, sy = 0, ax = 0, ay = 0, bx = 0, by = 0;
-        for (let i = start; i < end; i++) {
-            const x = Math.round(coords[i * 2] * k / Q), y = Math.round(coords[i * 2 + 1] * k / Q);
-            if (i === start) { ring = `M${x} ${y}`; n = 1; } else if (i === end - 1 ? (x !== px || y !== py) : Math.abs(x - px) + Math.abs(y - py) > tol) {
-                const dx = x - px, dy = y - py;
-                ring += dy === 0 ? `h${dx}` : dx === 0 ? `v${dy}` : `l${dx} ${dy}`;
-                if (n++ === 1) { sx = px; sy = py; ax = x; ay = y; }
-                len += Math.hypot(dx, dy); bx = px; by = py;
-            } else continue;
-            px = x; py = y;
-        }
-        if (n >= (close ? 3 : 2)) d += close ? ring + 'z' : ring;
-        if (cap && n >= 2 && !close) cap.e += capEnds(cap, sx, sy, ax, ay, bx, by, px, py, len);
     }
     return d;
+}
+
+/**
+ * The points of a ring of the tile `id` (tile units, `x, y` pairs) on the screen of a tilted view, in path units (`Q`
+ * for each pixel). The ring is cut where it comes nearer to the camera than a tenth of the camera distance (the near
+ * plane), so that no point behind the camera is drawn: a closed ring stays one ring, and an open line can fall into pieces.
+ */
+function cut(tr: Transform, id: TileID, pts: number[], close: boolean): number[][] {
+    const out: number[][] = [], near = tr.cameraDistance / 10, n = pts.length / 2;
+    let piece: number[] = [];
+    const put = (x: number, y: number) => { const p = tr.projectTile(id, x, y); piece.push(p[0] * Q, p[1] * Q); };
+    const depth = (i: number) => tr.projectTile(id, pts[i * 2], pts[i * 2 + 1])[2];
+    for (let i = 0; i < n; i++) {
+        const j = close ? (i || n) - 1 : i - 1, a = depth(i), b = j < 0 ? a : depth(j);
+        // (The depth is linear on the ground, so the point where an edge meets the near plane is found on the ground.)
+        if (a < near !== b < near) { const t = (near - b) / (a - b); put(pts[j * 2] + (pts[i * 2] - pts[j * 2]) * t, pts[j * 2 + 1] + (pts[i * 2 + 1] - pts[j * 2 + 1]) * t); }
+        if (a >= near) put(pts[i * 2], pts[i * 2 + 1]);
+        else if (!close && piece.length) { out.push(piece); piece = []; }
+    }
+    if (piece.length) out.push(piece);
+    return out;
 }
 
 /**
@@ -123,7 +145,7 @@ export interface SVGScene {
 const padOf = (m: number[]) => +(1 / (Math.hypot(m[0], m[1]) * Q || 1)).toFixed(3);
 
 export function renderSVG(s: SVGScene): string {
-    const {tr} = s, zoom = tr.zoom;
+    const {tr} = s, zoom = tr.zoom, tilt = tr.pitch > 0;
     const defs: string[] = [], body: string[] = [];
     // Lines drawn as [body index, attributes, path data]; path data written by two layers (a road and its casing) goes once into <defs>.
     const lines: [number, string, string][] = [], seen = new Map<string, number>();
@@ -132,7 +154,9 @@ export function renderSVG(s: SVGScene): string {
         for (const it of list) {
             const id = 'c' + clipIds.size, [x0, y0, x1, y1] = it.clip, pad = 'href' in it.tile ? padOf(it.matrix) : 0;
             clipIds.set(it, id);
-            defs.push(`<clipPath id="${id}"><rect x="${x0 / Q}" y="${y0 / Q}" width="${(x1 - x0) / Q + pad}" height="${(y1 - y0) / Q + pad}"/></clipPath>`);
+            // (In a tilted view the clip is the part of the tile in front of the near plane, on the screen in path units.)
+            const q = tilt ? cut(tr, it.id, [x0, y0, x1, y0, x1, y1, x0, y1], true)[0] ?? [] : [];
+            defs.push(`<clipPath id="${id}">${tilt ? `<path d="M${q.map(Math.round).join(' ')}z"/>` : `<rect x="${x0 / Q}" y="${y0 / Q}" width="${(x1 - x0) / Q + pad}" height="${(y1 - y0) / Q + pad}"/>`}</clipPath>`);
         }
     }
 
@@ -155,9 +179,23 @@ export function renderSVG(s: SVGScene): string {
         for (const it of s.items.get(L.source!) ?? []) {
             if ('href' in it.tile) {
                 if (L.type === 'raster') {
+                    const id = 'r' + defs.length, img = `<image${tilt ? ` id="${id}"` : ''} href="${escapeXML(it.tile.href)}" width="${EXTENT / Q + padOf(it.matrix)}" height="${EXTENT / Q + padOf(it.matrix)}" preserveAspectRatio="none"${(p.resampling.eval(zoom) ?? p.rasterResampling.eval(zoom)) === 'nearest' ? ' style="image-rendering:pixelated"' : ''}/>`;
                     const m = it.matrix.map((v, i) => i < 4 ? +(v * Q).toFixed(6) : +v.toFixed(2));
-                    body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${alpha('opacity', opacity)}>` +
-                        `<image href="${escapeXML(it.tile.href)}" width="${EXTENT / Q + padOf(it.matrix)}" height="${EXTENT / Q + padOf(it.matrix)}" preserveAspectRatio="none"${(p.resampling.eval(zoom) ?? p.rasterResampling.eval(zoom)) === 'nearest' ? ' style="image-rendering:pixelated"' : ''}/></g>`);
+                    if (!tilt) { body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${alpha('opacity', opacity)}>${img}</g>`); continue; }
+                    defs.push(img);
+                    // A tilted view has no affine map for a whole tile: the tile is drawn in 4 by 4 cells, each with the map of
+                    // three of its corners and clipped by a nested <svg>, which uses the image in <defs>. A cell that reaches past the
+                    // near plane is left out.
+                    const [x0, y0, x1, y1] = it.clip, w = (x1 - x0) / 4, h = (y1 - y0) / 4;
+                    let cells = '';
+                    for (let i = 0; i < 16; i++) {
+                        const u = x0 + i % 4 * w, v = y0 + (i >> 2) * h, [a, b, c] = [[u, v], [u + w, v], [u, v + h]].map(([x, y]) => tr.projectTile(it.id, x, y));
+                        if (Math.min(a[2], b[2], c[2]) < tr.cameraDistance / 10) continue;
+                        const m = [(b[0] - a[0]) / w, (b[1] - a[1]) / w, (c[0] - a[0]) / h, (c[1] - a[1]) / h], pad = padOf(m), x = u / Q, y = v / Q, cw = w / Q + pad, ch = h / Q + pad;
+                        m.push(a[0] - m[0] * u - m[2] * v, a[1] - m[1] * u - m[3] * v);
+                        cells += `<g transform="matrix(${m.map((v, i) => i < 4 ? +(v * Q).toFixed(6) : +v.toFixed(2)).join(' ')})"><svg viewBox="${x} ${y} ${cw} ${ch}" x="${x}" y="${y}" width="${cw}" height="${ch}"><use href="#${id}"/></svg></g>`;
+                    }
+                    body.push(`<g${alpha('opacity', opacity)}>${cells}</g>`);
                 }
                 continue;
             }
@@ -182,8 +220,10 @@ export function renderSVG(s: SVGScene): string {
                         for (; r < featEnds[f]; r++) {
                             const i = ringEnds[r] - 1, tx = coords[i * 2], ty = coords[i * 2 + 1];
                             if (tx < it.clip[0] || ty < it.clip[1] || tx >= it.clip[2] || ty >= it.clip[3]) continue;
-                            const [x, y] = apply(it.matrix, tx, ty);
-                            body.push(`<circle cx="${num(x)}" cy="${num(y)}" r="${num(radius)}" fill="${col}"${alpha('fill-opacity', a)}${stroke}/>`);
+                            // In a tilted view a circle is drawn at its point on the screen, larger nearer the camera unless circle-pitch-scale is "viewport".
+                            const [x, y, depth] = tilt ? tr.projectTile(it.id, tx, ty) : [...apply(it.matrix, tx, ty), 1], z = tilt && L.p.pitchScale.eval(zoom) == 'map' ? tr.cameraDistance / depth : 1;
+                            if (depth <= 0) continue;
+                            body.push(`<circle cx="${num(x)}" cy="${num(y)}" r="${num(radius * z)}" fill="${col}"${alpha('fill-opacity', a)}${stroke}/>`);
                         }
                     }
                     continue;
@@ -193,26 +233,27 @@ export function renderSVG(s: SVGScene): string {
                 const oc = fill && p.outline ? p.outline.eval(zoom) as RGBA : null;
                 const outline = oc && oc[3] > 0 ? ` stroke="${hex(oc)}" stroke-width="1"${alpha('stroke-opacity', oc[3] * opacity)}` : '';
                 if (gap > 0) { if (!hollow.has(L.id)) { hollow.add(L.id); s.skipped?.(L.id, 'hollow lines (line-gap-width)'); } continue; } // a hollow stroke has no simple SVG equivalent; rare enough to leave to the client
-                // The viewport in this tile's coordinates (plus a margin for stroke widths), to skip what is off screen.
-                const [a, bb, c, dd, e, ff] = it.matrix, det = a * dd - bb * c, pad = 24 / it.scale;
+                // The viewport in path units (plus a margin for stroke widths), to skip what is off screen. In a tilted view a path unit is
+                // 1 / Q pixel on the screen, and otherwise Q units of this tile.
+                const [a, bb, c, dd, e, ff] = it.matrix, det = a * dd - bb * c, unitsPerPx = tilt ? Q : 1 / (it.scale * Q), pad = 24 * unitsPerPx;
                 const corners = [[0, 0], [tr.width, 0], [0, tr.height], [tr.width, tr.height]].map(([x, y]) =>
-                    [(dd * (x - e) - c * (y - ff)) / det, (-bb * (x - e) + a * (y - ff)) / det]);
+                    tilt ? [x * Q, y * Q] : [(dd * (x - e) - c * (y - ff)) / det / Q, (-bb * (x - e) + a * (y - ff)) / det / Q]);
                 const box = [Math.min(...corners.map(p => p[0])) - pad, Math.min(...corners.map(p => p[1])) - pad,
                     Math.max(...corners.map(p => p[0])) + pad, Math.max(...corners.map(p => p[1])) + pad];
-                const unitsPerPx = 1 / (it.scale * Q), minSize = (L.ssr?.minSize ?? 0.8) * unitsPerPx, tol = (L.ssr?.simplify ?? 0.6) * unitsPerPx;
+                const minSize = (L.ssr?.minSize ?? 0.8) * unitsPerPx, tol = (L.ssr?.simplify ?? 0.6) * unitsPerPx;
                 for (let f = 0; f < n; f++) {
                     const [col, a] = styleOf(f), w = fill ? 0 : b.width ? b.width[f] : p.width.eval(zoom);
                     if (fill ? a <= 0 && !outline : a <= 0 || w <= 0) continue;
                     const key = fill ? `fill="${col}"${alpha('fill-opacity', a)}${outline}`
                         : `stroke="${col}" stroke-width="${num(w)}"${alpha('stroke-opacity', a * Math.min(1, w))}` +
                             (dash ? ` stroke-dasharray="${dash.map(d => num(d * Math.max(w, 0.5))).join(' ')}"` : '');
-                    const cap = dash && b.cap === 'square' ? {half: w / 2 * unitsPerPx, pat: dash.map(d => d * Math.max(w, 0.5)), px: it.scale * Q, e: ''} : undefined;
-                    const d = pathData(b, f, fill, box, minSize, tol, cap, fill ? 0 : (b.offset ? b.offset[f] : p.offset.eval(zoom)) / it.scale);
+                    const cap = dash && b.cap === 'square' ? {half: w / 2 * unitsPerPx, pat: dash.map(d => d * Math.max(w, 0.5)), px: 1 / unitsPerPx, e: ''} : undefined;
+                    const d = pathData(b, f, fill, box, minSize, tol, cap, fill ? 0 : (b.offset ? b.offset[f] : p.offset.eval(zoom)) / it.scale, tilt ? (pts, close) => cut(tr, it.id, pts, close) : undefined);
                     if (d) groups.set(key, (groups.get(key) ?? '') + d);
                     if (cap?.e) { const k2 = `stroke="${col}" stroke-width="${num(w)}"${alpha('stroke-opacity', a * Math.min(1, w))}`; groups.set(k2, (groups.get(k2) ?? '') + cap.e); }
                 }
                 if (!groups.size) continue;
-                const m = it.matrix.map((v, i) => i < 4 ? +(v * Q).toFixed(6) : +v.toFixed(2));
+                const m = tilt ? [1 / Q, 0, 0, 1 / Q, 0, 0] : it.matrix.map((v, i) => i < 4 ? +(v * Q).toFixed(6) : +v.toFixed(2));
                 // SVG puts the cap on every dash. As in MapLibre GL JS, the dashes of a line with a square cap are butt dashes (#2175).
                 body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${fill ? '' : ` fill="none"${b.cap === 'round' || b.cap === 'square' && !dash ? ` stroke-linecap="${b.cap}"` : ''}${b.join === 'round' || b.join === 'bevel' ? ` stroke-linejoin="${b.join}"` : ` stroke-miterlimit="${num(+(b.miterLimit ?? 2) || 2)}"`}`}>`);
                 for (const [attrs, d] of groups) if (d && !fill) { lines.push([body.length, attrs, d]); seen.set(d, (seen.get(d) ?? 0) + 1); body.push(''); }
@@ -278,8 +319,10 @@ export function renderSVG(s: SVGScene): string {
                 `${src.spacing ? ` letter-spacing="${num(src.spacing * l.size)}"` : ''} fill="${hex(src.color)}"${alpha('fill-opacity', src.color[3] * (l.alpha ?? 1))}${halo}`;
             if (l.curve) {
                 // Text along a line: one position and rotation per character, which SVG text supports directly.
-                const c = l.curve, chars = shaped.lines[0].chars, at = (k: number) => chars.map((_, i) => num(c[i * 3 + k] + (k ? l.y : l.x))).join(' ');
-                body.push(`<text text-anchor="start" xml:space="preserve" x="${at(0)}" y="${at(1)}" rotate="${chars.map((_, i) => num(c[i * 3 + 2] * 180 / Math.PI)).join(' ')}" ${common}>${escapeXML(chars.join(''))}</text>`);
+                const c = l.curve, g = l.ground, chars = shaped.lines[0].chars, at = (k: number) => chars.map((_, i) => num(c[i * 3 + k] + (k ? l.y : l.x))).join(' ');
+                // On the ground of a tilted map each glyph has its own frame on the screen (`Placed.ground`), as the map draws it.
+                if (g) body.push(`<g text-anchor="start" ${common}>${chars.map((ch, i) => `<text transform="matrix(${[g[i * 3] * Math.cos(c[i * 3 + 2]), g[i * 3] * Math.sin(c[i * 3 + 2]), g[i * 3 + 1], g[i * 3 + 2], c[i * 3] + l.x, c[i * 3 + 1] + l.y].map(num).join(' ')})">${escapeXML(ch)}</text>`).join('')}</g>`);
+                else body.push(`<text text-anchor="start" xml:space="preserve" x="${at(0)}" y="${at(1)}" rotate="${chars.map((_, i) => num(c[i * 3 + 2] * 180 / Math.PI)).join(' ')}" ${common}>${escapeXML(chars.join(''))}</text>`);
                 continue;
             }
             const rot = turn(l.x, l.y, l.angle, l.frame);

@@ -13,8 +13,8 @@ import {overlaps} from './tile.ts';
 import {isGeometrySource, screenTranslate, tileURL, type CompiledLayer, type SourceInfo} from './style.ts';
 import {VARIANT} from './markers.ts';
 import {BASELINE, EM} from './text.ts';
-import {boxAround, flatSize, perspective, quadBox} from './placement.ts';
-import {circleCenters, circleRadius, circleTouches, featureKey, movedCenter, pitchedCircles, setBox, setReach, tilesUnderBox, type QueriedFeature} from './query.ts';
+import {boxAround, flatSize, lineCircles, perspective, quadBox} from './placement.ts';
+import {circleCenters, circleRadius, circleTouches, featureKey, movedCenter, pitchedCircles, setBox, setReach, tilesUnderBox, type FoundFeature, type QueriedFeature} from './query.ts';
 import type {Command} from './engine.ts';
 
 export * from './query.ts';
@@ -37,7 +37,9 @@ export async function queryRendered(this: any, c: Extract<Command, {type: 'query
     })};
     const jobs: Promise<QueriedFeature[]>[] = [];
     // (The symbol layers of the question whose features are tested with their icon, and the distance in pixels for their text.)
-    const radii = new Map<string, number>(), icons = new Map<string, {at: number[]; text: string[]}>(), shown = new Map<string, {x: number; y: number; ax?: number; ay?: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[]>();
+    const radii = new Map<string, number>(), icons = new Map<string, {at: number[]; text: string[]; of: string[]}>(), shown = new Map<string, {x: number; y: number; ax?: number; ay?: number; box: number[]; line?: boolean; icon?: boolean; text?: string; of: string}[]>();
+    // (The places in their tiles of the features whose labels are in the rectangle: see `QuerySet.at`.)
+    const wants = new Map<string, Map<string, number[]>>();
     // (The circle layers of a tilted map, whose features are tested on the screen with `circleTouches`.)
     const pitched = pitchedCircles(this.tr, c.box, c.sets), circles = new Map([...pitched?.circles ?? []].map(s => [s.layer, s]));
     for (const [name, src] of Object.entries<SourceInfo>(this.style.sources)) {
@@ -62,6 +64,18 @@ export async function queryRendered(this: any, c: Extract<Command, {type: 'query
             // label is hidden is not found along its geometry: #1916.)
             if (L?.type === 'symbol') reach ??= [0, 0, 0, 0];
             if (reach) radii.set(s.layer, r), shown.set(s.layer, texts), icons.set(s.layer, iconPoints.call(this, s.layer));
+            if (reach) {
+                // (A label that lies in the rectangle names its feature, as it does in MapLibre GL JS, and the tile gives that feature
+                // whether or not its line is near.)
+                const want = new Map<string, number[]>(), add = (of: string) => { const i = of.lastIndexOf('/'), k = of.slice(0, i); (want.get(k) ?? want.set(k, []).get(k)!).push(+of.slice(i + 1)); };
+                for (const t of texts) if (t.line && t.box[0] <= c.box[2] && t.box[2] >= c.box[0] && t.box[1] <= c.box[3] && t.box[3] >= c.box[1]) add(t.of);
+                const {at: pts, of} = icons.get(s.layer)!;
+                for (let i = 0; i < pts.length; i += 2) {
+                    const [x, y] = this.tr.project(lngFromMerc(pts[i]), latFromMerc(pts[i + 1]));
+                    if (x >= c.box[0] - reach[2] && x <= c.box[2] - reach[0] && y >= c.box[1] - reach[3] && y <= c.box[3] - reach[1]) add(of[i / 2]);
+                }
+                wants.set(s.layer, want);
+            }
             const circle = circles.get(s.layer) === s;
             const box = reach ? [c.box[0] - Math.max(reach[2], r), c.box[1] - Math.max(reach[3], r), c.box[2] - Math.min(reach[0], -r), c.box[3] - Math.min(reach[1], -r)] : circle ? pitched!.box : setBox(c.box, s), pad = reach || circle ? 0 : setReach(s), key = box.join() + ',' + pad;
             const group = boxes.get(key) ?? {box, pad, sets: [], exact: !!reach || circle};
@@ -69,10 +83,22 @@ export async function queryRendered(this: any, c: Extract<Command, {type: 'query
             group.sets.push(circle && s.size ? {...s, radius: 0, size: {...s.size, scale: pitched!.k}} : reach || circle ? {...s, radius: 0} : s);
             boxes.set(key, group);
         }
-        for (const {box, pad, sets, exact} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom, pad)) {
-            jobs.push(queryBackend.call(this, name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y, this.dpr), {
+        for (const {box, pad, sets, exact} of boxes.values()) {
+            const asked = new Set<string>(), tiles = tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom, pad);
+            for (const t of tiles) asked.add(`${t.z}/${t.x}/${t.y}`);
+            // (A label can belong to a tile of another zoom than the tiles under the rectangle, as on a tilted map or on the globe.
+            // The features of that tile that the label names are asked from it, with a rectangle that touches nothing.)
+            for (const s of sets) for (const [key, at] of wants.get(s.layer) ?? []) {
+                if (asked.has(key)) continue;
+                const [z, x, y] = key.split('/').map(Number);
+                jobs.push(queryBackend.call(this, name, z, x, y).query(tileURL(src, z, x, y, this.dpr), {
+                    source: name, z, zoom: Math.max(z, Math.floor(this.tr.zoom)), x, y, px: 0, py: 0, radius: 0, box: [-1e6, -1e6, -1e6 + 1, -1e6 + 1], geometry: true,
+                    sets: [{at, layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: 0, ring: s.ring}],
+                }));
+            }
+            for (const t of tiles) jobs.push(queryBackend.call(this, name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y, this.dpr), {
                 source: name, z: t.z, zoom: Math.max(t.z, Math.floor(this.tr.zoom)), x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry || exact,
-                sets: sets.map(s => ({layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale, ring: s.ring, size: s.size && (s.radius || s.size.scale) ? {...s.size, scale: t.scale * (s.size.scale ?? 1)} : undefined})),
+                sets: sets.map(s => ({at: wants.get(s.layer)?.get(`${t.z}/${t.x}/${t.y}`) ?? (wants.has(s.layer) ? [] : undefined), layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale, ring: s.ring, size: s.size && (s.radius || s.size.scale) ? {...s.size, scale: t.scale * (s.size.scale ?? 1)} : undefined})),
             }));
         }
     }
@@ -111,15 +137,18 @@ function imageNamed(this: any, name: string) {
     for (const [key, image] of this.images) if (key.startsWith(name + VARIANT)) return image;
 }
 
+/** The feature of a label, as `QueriedFeature.at` of a query tells it: the tile and the place of the feature in it. */
+const labelOf = (p: {tile: {z: number; x: number; y: number}; src: {at: number}}) => `${p.tile.z}/${p.tile.x}/${p.tile.y}/${p.src.at}`;
+
 /** The points in Mercator (x, y pairs, 0 to 1) of the shown labels of a layer that have their icon drawn. */
 function iconPoints(this: any, layer: string) {
-    const out: number[] = [], text: string[] = [];
+    const out: number[] = [], text: string[] = [], of: string[] = [];
     for (const [key, {placed: p, target}] of this.labels) {
         if (!target || !p.icon || !key.startsWith(layer + '|')) continue;
         const n = 2 ** p.tile.z;
-        out.push((p.tile.x + p.src.x / EXTENT) / n, (p.tile.y + p.src.y / EXTENT) / n), text.push(p.src.text);
+        out.push((p.tile.x + p.src.x / EXTENT) / n, (p.tile.y + p.src.y / EXTENT) / n), text.push(p.src.text), of.push(labelOf(p));
     }
-    return {at: out, text};
+    return {at: out, text, of};
 }
 
 /**
@@ -128,7 +157,7 @@ function iconPoints(this: any, layer: string) {
  * for each glyph, around the piece of the line that the glyph covers.
  */
 function textBoxes(this: any, layer: string) {
-    const out: {x: number; y: number; ax?: number; ay?: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[] = [], at: [number, number, number] = [0, 0, 0];
+    const out: {x: number; y: number; ax?: number; ay?: number; box: number[]; line?: boolean; icon?: boolean; text?: string; of: string}[] = [], at: [number, number, number] = [0, 0, 0];
     for (const [key, {placed: p, target}] of this.labels) {
         if (!target || !p.shaped || !key.startsWith(layer + '|')) continue;
         const [x, y] = this.tr.projectTile(p.tile, p.src.x, p.src.y, undefined, at), s = p.size / EM, w = p.shaped.width * s, h = p.shaped.height * s;
@@ -137,12 +166,15 @@ function textBoxes(this: any, layer: string) {
             // centered on the line, as its collision box is. On a tilted map `ground` gives the length on the
             // screen of one pixel of text along the line, and the direction of one pixel across it.)
             // (Text of a layer with `icon-offset` has glyphs without the perspective ratio, and its boxes keep it: see `Placed.fixedSize`.)
-            const g = p.ground, fit = p.fixedSize ? g ? perspective(this.tr, at[2]) : 1 / perspective(this.tr, at[2]) : 1, r = h / fit / 2 + p.src.padding, shift = (p.src.offset[1] + BASELINE) * p.size, advances = p.shaped.lines[0].advances;
+            const g = p.ground, fit = p.fixedSize ? g ? perspective(this.tr, at[2]) : 1 / perspective(this.tr, at[2]) : 1, r = h / fit / 2 + p.src.padding, shift = (p.src.offset[1] + BASELINE) * p.size, advances = p.shaped.lines[0].advances, mids: number[] = [];
             for (let i = 0; i < p.curve.length / 3; i++) {
                 const a = p.curve[i * 3 + 2], len = advances[i] * s * (g ? g[i * 3] : 1) / 2;
                 const cx = x + p.curve[i * 3] + Math.cos(a) * len - (g ? g[i * 3 + 1] : -Math.sin(a)) * shift, cy = y + p.curve[i * 3 + 1] + Math.sin(a) * len - (g ? g[i * 3 + 2] : Math.cos(a)) * shift;
-                out.push({x: cx, y: cy, ax: x, ay: y, line: true, text: p.src.text, box: [cx - r, cy - r, cx + r, cy + r]});
+                mids.push(cx, cy);
             }
+            // (The glyphs take space as the circles of placement do: see `lineCircles`. A query finds the text on the box of a circle, as in
+            // MapLibre GL JS, so the text is not found between two circles.)
+            for (const [cx, cy] of lineCircles(mids, r).map(c => [(c[0] + c[2]) / 2, (c[1] + c[3]) / 2])) out.push({x: cx, y: cy, ax: x, ay: y, line: true, text: p.src.text, of: labelOf(p), box: [cx - r, cy - r, cx + r, cy + r]});
             continue;
         }
         // (The box of placement: `text-padding` is added before the box is turned, as in MapLibre GL JS. Text on the
@@ -151,7 +183,7 @@ function textBoxes(this: any, layer: string) {
         const r = p.fixedSize ? (p.frame ? flatSize(this.tr, at[2]) : perspective(this.tr, at[2])) : 1, f = p.frame, fw = (f ? w * Math.hypot(f[0], f[1]) : w) * r, fh = (f ? h * Math.hypot(f[2], f[3]) : h) * r;
         // (On the globe the frame has a second order, and the box is the bound of the text as it is drawn: see `quadBox`.)
         const cx = x + (p.x - p.ax) * r, cy = y + (p.y - p.ay) * r;
-        out.push({x, y, line: p.src.angle !== null, icon: !!p.icon, text: p.src.text, box: f && f.length > 4 ? quadBox(f, cx, cy, w * r, h * r, p.src.padding)
+        out.push({x, y, line: p.src.angle !== null, icon: !!p.icon, text: p.src.text, of: labelOf(p), box: f && f.length > 4 ? quadBox(f, cx, cy, w * r, h * r, p.src.padding)
             : boxAround(cx, cy, fw, fh, p.angle, p.src.padding, p.src.angle === null && !p.src.upright && !f ? -this.tr.bearing * Math.PI / 180 : 0)});
     }
     return out;
@@ -164,15 +196,15 @@ function textBoxes(this: any, layer: string) {
  * (A feature with no point, and a feature with no text and an icon whose image the map does not have, is found
  * within `radius` pixels of its geometry as before.)
  */
-function underIcon(this: any, L: CompiledLayer, q: QueriedFeature, box: number[], radius: number, texts: {x: number; y: number; ax?: number; ay?: number; box: number[]; line?: boolean; icon?: boolean; text?: string}[], {at: icons, text: iconTexts}: {at: number[]; text: string[]}): boolean {
+function underIcon(this: any, L: CompiledLayer, q: FoundFeature, box: number[], radius: number, texts: {x: number; y: number; ax?: number; ay?: number; box: number[]; line?: boolean; icon?: boolean; text?: string; of: string}[], {at: icons, of: iconOf}: {at: number[]; text: string[]; of: string[]}): boolean {
     const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
     const points = g?.type === 'Point' ? [g.coordinates as number[]] : g?.type === 'MultiPoint' ? g.coordinates as number[][] : null;
     // (A `{name}` token of the text is replaced as the tiles replace it, so that the text is the one that is drawn.)
     const untoken = (t: string) => L.p.field.tokens ? t.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : t;
     const name = pickImage(String(L.p.icon.eval(z, f) ?? ''), n => imageNamed.call(this, n.split(VARIANT)[0])).split(VARIANT)[0];
     const image = imageNamed.call(this, (L.p.icon.tokens ? name.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : name).trim());
-    // Text on a line is found on the boxes of its glyphs (see `textBoxes`) when it is shown, and not found when it is
-    // hidden. A glyph is the feature's when the place where it meets the line lies on the feature's line. A polygon
+    // Text on a line is found on the circles of its glyphs (see `textBoxes`) when it is shown, and not found when it is
+    // hidden. A label is the feature's when it was made from it (`LabelSrc.at`). A polygon
     // whose label is placed at a point is found on the box of that label, as in MapLibre GL JS (#1969): the label is
     // the polygon's when its point lies in the polygon and its text is the polygon's. (A line or a polygon with an
     // icon is found within `radius` pixels of its geometry as before.)
@@ -182,29 +214,21 @@ function underIcon(this: any, L: CompiledLayer, q: QueriedFeature, box: number[]
         // (A line with an icon is found where its shown labels are drawn, on their icons and the boxes of their glyphs, as in
         // MapLibre GL JS: an icon that collision hid is not found, #2243.)
         if (image && (g.type === 'LineString' || g.type === 'MultiLineString')) {
-            const lines = (g.type === 'LineString' ? [g.coordinates] : g.coordinates) as number[][][], size = L.p.iconSize.eval(z, f), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
+            const size = L.p.iconSize.eval(z, f), turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
             const [x0, y0, x1, y1] = this.iconBox(L, image.width / image.pixelRatio, image.height / image.pixelRatio, size, turn, L.p.iconPadding.eval(z, f), f);
-            const screen = lines.map(l => l.map(([lng, lat]) => tr.project(lng, lat)));
-            // (A label is the feature's when its text is the feature's text and its point, where its icon is, lies on the
-            // feature's line, as in MapLibre GL JS, where each label belongs to the one feature that made it. A glyph of a
-            // label can lie on another line that the label crosses, and the point of a label of another street can lie on
-            // this line where the two meet.)
-            const field = text.toLowerCase().replace(/\s/g, ''), mine = (t: string | undefined, x: number, y: number) => t?.toLowerCase().replace(/\s/g, '') === field && screen.some(l => {
-                for (let k = 1; k < l.length; k++) {
-                    const [ax, ay] = l[k - 1], [bx, by] = l[k], dx = bx - ax, dy = by - ay, u = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)));
-                    if (Math.hypot(ax + u * dx - x, ay + u * dy - y) < 1.5) return true;
-                }
-                return false;
-            });
-            if (text && texts.some(t => t.line && t.box[0] <= box[2] && t.box[2] >= box[0] && t.box[1] <= box[3] && t.box[3] >= box[1] && mine(t.text, t.ax ?? t.x, t.ay ?? t.y))) return true;
+            // (A label is the feature's when it was made from it, as in MapLibre GL JS, where each label belongs to the one
+            // feature that made it: the tile and the place of the feature in the tile are the same. A road that comes as several
+            // lines is one label line, and its labels belong to the first of the lines, as they do there. A glyph can lie
+            // on another line that the label crosses, and the point of a label of another street can lie on this line.)
+            if (text && texts.some(t => t.line && t.of === q.at && t.box[0] <= box[2] && t.box[2] >= box[0] && t.box[1] <= box[3] && t.box[3] >= box[1])) return true;
             for (let i = 0; i < icons.length; i += 2) {
                 const [x, y] = tr.project(lngFromMerc(icons[i]), latFromMerc(icons[i + 1]));
-                if (x + x0 <= box[2] && x + x1 >= box[0] && y + y0 <= box[3] && y + y1 >= box[1] && mine(iconTexts[i / 2], x, y)) return true;
+                if (x + x0 <= box[2] && x + x1 >= box[0] && y + y0 <= box[3] && y + y1 >= box[1] && iconOf[i / 2] === q.at) return true;
             }
             return false;
         }
         return image || !text ? true
-            : textOnLine.call(this, g, box, texts) || labelInPolygon.call(this, g, box, texts, text.toLowerCase().replace(/\s/g, ''));
+            : texts.some(t => t.line && t.of === q.at && t.box[0] <= box[2] && t.box[2] >= box[0] && t.box[1] <= box[3] && t.box[3] >= box[1]) || labelInPolygon.call(this, g, box, texts, text.toLowerCase().replace(/\s/g, ''));
     }
     // (A label whose text is hidden by collision is not found at its point, as in MapLibre GL JS: #1968.)
     const text = untoken(String(L.p.field.eval(z, f) ?? '')), field = text.toLowerCase().replace(/\s/g, ''), near = !image && !text, turn = L.p.iconRotate.eval(z, f) * Math.PI / 180;
@@ -283,42 +307,6 @@ function labelInPolygon(this: any, g: NonNullable<QueriedFeature['geometry']>, b
         });
     });
 }
-
-/** Whether a shown label on a line of `g` (a feature that a question found) has a box in the rectangle `box`. */
-function textOnLine(this: any, g: NonNullable<QueriedFeature['geometry']>, box: number[], texts: {x: number; y: number; box: number[]; line?: boolean}[]): boolean {
-    const hit = texts.filter(t => t.line && t.box[0] <= box[2] && t.box[2] >= box[0] && t.box[1] <= box[3] && t.box[3] >= box[1]);
-    if (!hit.length) return false;
-    const tr = this.tr, lines = (g.type === 'LineString' ? [g.coordinates] : g.type === 'MultiLineString' || g.type === 'Polygon' ? g.coordinates : g.type === 'MultiPolygon' ? (g.coordinates as number[][][][]).flat() : []) as number[][][];
-    for (const line of lines) {
-        const pts = line.map(([lng, lat]) => tr.project(lng, lat));
-        // On the globe a piece of the line is straight in Mercator and curved on the screen, and text that lies on the
-        // ground has its glyphs on that curve (see `followLine`). The piece is cut into steps that are straight within
-        // a tenth of a pixel (the arc of a step of length s on a sphere of radius R strays s² / 8R from its chord).
-        // Text that faces the screen has its glyphs on the straight segments between the points, so both are tested.
-        // (The steps go back from the last point to the first, after the points, so that the path stays joined.)
-        if (tr.globeness) {
-            const ws = tr.worldSize, step = Math.sqrt(0.8 * ws / (2 * Math.PI)) / ws;
-            for (let i = line.length - 1; i > 0; i--) {
-                const ax = mercX(line[i - 1][0]), ay = mercY(line[i - 1][1]), by = mercY(line[i][1]);
-                // (The shorter way around: a segment across the antimeridian can have longitudes such as 179 and -179.)
-                let bx = mercX(line[i][0]);
-                bx += Math.round(ax - bx);
-                const n = Math.min(4096, Math.ceil(Math.hypot(bx - ax, by - ay) / step));
-                for (let j = n - 1; j > 0; j--) pts.push(tr.mercToScreen(ax + (bx - ax) * j / n, ay + (by - ay) * j / n));
-                pts.push(pts[i - 1]);
-            }
-        }
-        for (let i = 1; i < pts.length; i++) {
-            const [ax, ay] = pts[i - 1], [bx, by] = pts[i], dx = bx - ax, dy = by - ay, d2 = dx * dx + dy * dy;
-            for (const t of hit) {
-                const k = d2 ? clamp(((t.x - ax) * dx + (t.y - ay) * dy) / d2, 0, 1) : 0;
-                if (Math.hypot(ax + dx * k - t.x, ay + dy * k - t.y) < 1) return true;
-            }
-        }
-    }
-    return false;
-}
-
 
 /**
  * How far from the point of a feature the icons of a symbol layer can reach on the screen: to the left, up, to the

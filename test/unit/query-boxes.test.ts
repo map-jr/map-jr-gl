@@ -131,3 +131,22 @@ test('query boxes: a feature with no id in the buffer of the tile, and a polygon
     // (The feature in the buffer alone is in no answer, with or without the boxes.)
     assert.equal(queryTile(kept, asks[1], undefined, boxes).filter(f => f.properties.n === 1 && f.type === 'Polygon').length, queryTile(data(), asks[1]).filter(f => f.type === 'Polygon').length);
 });
+
+test('query boxes: a feature that a set names by its place in the tile is found far from the question, as without boxes (#2460)', () => {
+    // (A symbol layer names the features that made its labels: a label can lie far from the geometry of its feature.)
+    const vt = decodeVectorTile(bytes), boxes: TileBoxes = {}, n = vt.transportation_name.features.length;
+    const sets = [...plain.slice(0, 7), {layer: 'names', sourceLayer: 'transportation_name', radius: 0, at: [0, n - 1]}] as TileQuery['sets'];
+    let named = 0;
+    // (Small boxes in a corner and in the middle of the tile: the named features are not near all of them.)
+    for (const [i, box] of [[10, 10, 14, 14], [2040, 2040, 2046, 2046], [4000, 100, 4004, 104], [-200, 4200, -190, 4210]].entries()) {
+        const q: TileQuery = {source: 's', z: 14, zoom: 14.5, x: 4823, y: 6160, px: 0, py: 0, radius: 0, box, sets};
+        // (Twice with the boxes: the second question has the boxes and the kept geometry of the first.)
+        const all = queryTile(decodeVectorTile(bytes), q), first = queryTile(vt, q, undefined, boxes), again = queryTile(vt, q, undefined, boxes);
+        assert.deepEqual(first, all, `question ${i}`);
+        assert.deepEqual(again, all, `question ${i}, asked again`);
+        const places = all.filter(f => f.layer === 'names').map(f => f.at);
+        for (const at of [0, n - 1]) assert.ok(places.includes(`14/4823/6160/${at}`), `question ${i}: the feature at ${at} is in ${places}`);
+        named += places.length;
+    }
+    assert.ok(named >= 8);
+});

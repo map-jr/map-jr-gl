@@ -37,7 +37,7 @@ export interface TileQuery {
     sets?: QuerySet[];
 }
 /** A feature of a GeoJSON source as a tile gives it for a rectangle: `index` is its place in the data of the source. The engine removes it. */
-export type FoundFeature = QueriedFeature & {index?: number};
+export type FoundFeature = QueriedFeature & {index?: number; at?: string};
 /**
  * A key for a feature that several tiles hold, so that a query gives the feature one time: for a GeoJSON feature its
  * place in the data, and for another feature its id. Two GeoJSON features with the same id are two results, as in
@@ -46,9 +46,16 @@ export type FoundFeature = QueriedFeature & {index?: number};
 export function featureKey(f: FoundFeature): string {
     const i = f.index;
     delete f.index;
+    delete f.at;
     return f.id === undefined && i === undefined ? '' : `${i ?? ''}|${f.layer}|${f.source}|${f.sourceLayer}|${i === undefined ? f.id : ''}`;
 }
 export interface QuerySet {
+    /**
+     * A symbol layer: each feature gets `at`, the tile and the place of the feature in it, which the labels of the tile carry too
+     * (`LabelSrc.at`). The places listed here are found without the test of their geometry: the label of a feature can lie far
+     * from its line when it belongs to a road that comes in parts.
+     */
+    at?: number[];
     layer: string; sourceLayer?: string; filter?: unknown; also?: unknown; radius: number;
     /** A line layer: the rings of a polygon are drawn as lines, so a feature of a polygon is found near its rings only. */
     ring?: boolean;
@@ -215,7 +222,7 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery, states?: 
     const n = 2 ** q.z, toLngLat = (x: number, y: number) => [lngFromMerc((q.x + x / EXTENT) / n), latFromMerc((q.y + y / EXTENT) / n)];
     // Without sets there is one question for all the data. With sets (the style layers of a rendered-features query)
     // each feature is read one time and tested for each set.
-    const sets = (q.sets ?? [{layer: undefined as string | undefined, sourceLayer: undefined as string | undefined, filter: q.filter, also: undefined as unknown, radius: q.radius, ring: undefined as boolean | undefined}])
+    const sets = (q.sets ?? [{layer: undefined as string | undefined, sourceLayer: undefined as string | undefined, filter: q.filter, also: undefined as unknown, radius: q.radius, ring: undefined as boolean | undefined, at: undefined as number[] | undefined}])
         .map(s => {
             const size = 'size' in s && s.size?.scale ? {...s.size, r: compileProp(s.size.a, 'number', s.size.line ? 1 : 5), w: compileProp(s.size.b, 'number', 0), o: compileProp(s.size.o, 'number', 0)} : null;
             // How far from the question a feature of the set can be found, in tile units: the distance of the set, or its
@@ -232,11 +239,15 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery, states?: 
         // (The largest distance of the sets: no number when a set takes its distance from the feature.)
         let reach = 0;
         for (const set of mine) reach = Math.max(reach, set.reach);
+        // (The features that a set names by their place in the tile, for the labels that they made, are found wherever
+        // their geometry is: their boxes are not tested.)
+        const wanted = new Set<number>();
+        for (const set of mine) for (const at of set.at ?? []) wanted.add(at);
         for (let i = 0, o = 0; i < features.length; i++, o += 4) {
             const f = features[i];
             // With the boxes of the tile, a feature whose box is farther from the question than every set reaches is
             // left out before its filters run and its geometry is read: most features of a tile, for a point.
-            if (b) {
+            if (b && !wanted.has(i)) {
                 if (far(b, o, reach)) continue;
                 // (The rule of the feature with no id, below, from its box.)
                 if (f.id === undefined && f.index === undefined && (b[o + 2] < 0 || b[o + 3] < 0 || b[o] > EXTENT || b[o + 1] > EXTENT)) continue;
@@ -244,13 +255,14 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery, states?: 
             f.state = f.id === undefined ? undefined : states?.[`${name === GEOJSON_LAYER ? '' : name}|${f.id}`];
             let c: number[] | null = null, ends: number[] = [], geometry: QueriedFeature['geometry'];
             for (const set of mine) {
-                if (b && far(b, o, set.reach)) continue;
+                const named = set.at?.includes(i);
+                if (b && !named && far(b, o, set.reach)) continue;
                 if ((set.test && !set.test({zoom: q.zoom ?? q.z, f})) || (set.test2 && !set.test2({zoom: q.zoom ?? q.z, f}))) continue;
                 const size = set.size, radius = size ? Math.min(Math.max(sizeOf(size.line, size.r.eval(size.zoom, f), size.w.eval(size.zoom, f)), 0), 1e4) * size.scale! : set.radius;
                 const offset = size && (f.type === 2 || set.ring) ? Math.min(Math.max(size.o.eval(size.zoom, f), -1e4), 1e4) * size.scale! : 0;
                 // (A set whose distance comes from the feature: the same test with that distance. An offset moves a line by
                 // more than its size at a sharp corner, so such a feature is always read.)
-                if (b && size && !offset && far(b, o, radius)) continue;
+                if (b && !named && size && !offset && far(b, o, radius)) continue;
                 if (!c) {
                     // (A large feature, such as the water of a tile, is near every question: its geometry is read one time.)
                     const was = known?.read[i];
@@ -270,11 +282,12 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery, states?: 
                     tc = []; te = [];
                     for (let i = 0, s = 0; i < ends.length; s = ends[i++]) tc.push(...c.slice(s * 2, ends[i] * 2), c[s * 2], c[s * 2 + 1]), te.push(tc.length / 2);
                 }
-                if (!touches(ring ? 2 : f.type, offset ? offsetLine(tc, te, offset) : tc, te, q.px, q.py, radius, q.box)) continue;
+                if (!touches(ring ? 2 : f.type, offset ? offsetLine(tc, te, offset) : tc, te, q.px, q.py, radius, q.box) && !named) continue;
                 // (A tile that is kept for the next question keeps the properties of its features: the answer gets a copy.)
                 const feature: FoundFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: boxes ? {...f.properties} : f.properties};
                 if (set.layer !== undefined) feature.layer = set.layer;
                 if (q.box && f.index !== undefined) feature.index = f.index;
+                if (set.at) feature.at = `${q.z}/${q.x}/${q.y}/${i}`;
                 if (q.geometry) {
                     if (!geometry) {
                         const rings: number[][][] = [];
