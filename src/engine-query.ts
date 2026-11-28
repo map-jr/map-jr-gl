@@ -136,7 +136,7 @@ function imageNamed(this: any, name: string) {
 const labelOf = (p: {tile: {z: number; x: number; y: number}; src: {at: number}}) => `${p.tile.z}/${p.tile.x}/${p.tile.y}/${p.src.at}`;
 
 /** A collision box of a shown label (see `labelBoxes`). */
-type Shown = {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string; of: string};
+type Shown = {x: number; y: number; box: number[]; line?: boolean; icon?: boolean; text?: string; of: string; m?: number[]};
 
 /** Whether the box `b` and the rectangle `box` touch. */
 const touches = (b: number[], box: number[]) => b[0] <= box[2] && b[2] >= box[0] && b[1] <= box[3] && b[3] >= box[1];
@@ -155,10 +155,13 @@ function labelBoxes(this: any, layer: string) {
         const [x, y] = this.tr.projectTile(p.tile, p.src.x, p.src.y, undefined, at), dx = x - p.ax, dy = y - p.ay, of = labelOf(p), line = p.src.angle !== null;
         const move = (b: number[]) => [b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy];
         if (p.shaped) for (const b of p.boxes ?? []) out.push({x, y, line, text: p.src.text, of, box: move(b)});
-        if (p.iconBox) out.push({x, y, line, icon: true, of, box: move(p.iconBox)});
+        if (p.iconBox) out.push({x, y, line, icon: true, of, box: move(p.iconBox), m: [(p.tile.x + p.src.x / EXTENT) / 2 ** p.tile.z, (p.tile.y + p.src.y / EXTENT) / 2 ** p.tile.z]});
     }
     return out;
 }
+
+/** Whether the icons of a layer lie on the ground for the query: `text-pitch-alignment` is `map`, or `auto` with `text-rotation-alignment` `map`. */
+const groundIcon = (L: CompiledLayer, f: Feature, z: number) => { const pitch = L.p.textPitch.eval(z, f); return pitch === 'map' || pitch !== 'viewport' && L.p.textAlign.eval(z, f) === 'map'; };
 
 /**
  * Whether a feature of a symbol layer that a question found is drawn in the rectangle of the question (in pixels of
@@ -170,10 +173,18 @@ function labelBoxes(this: any, layer: string) {
  * - an icon without text that may overlap, which the tiles can draw apart from the labels, on its own box.
  */
 function underIcon(this: any, L: CompiledLayer, q: FoundFeature, box: number[], radius: number, shown: Shown[]): boolean {
-    const own = shown.filter(t => t.of === q.at);
-    if (own.some(t => touches(t.box, box))) return true;
+    const own = shown.filter(t => t.of === q.at), tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
+    if (own.some(t => touches(t.box, box) && !(t.icon && !t.line && groundIcon(L, f, z)))) return true;
+    // (The icon of a label at a point with `text-pitch-alignment` `map` is found on the box that MapLibre GL JS projects from the ground
+    // (`groundIconBox`), which differs by a few pixels from the box that placement keeps: #2336.)
+    for (const t of own) if (t.icon && !t.line && t.m && groundIcon(L, f, z)) {
+        const img = imageNamed.call(this, String(L.p.icon.eval(z, f) ?? '').trim().split(VARIANT)[0]);
+        if (!img) { if (touches(t.box, box)) return true; continue; }
+        const depth = tr.pitch || tr.globeness ? tr.projectTile({z: 0, x: 0, y: 0, w: 0, key: ''}, t.m[0] * EXTENT, t.m[1] * EXTENT)[2] : 0;
+        const [x0, y0, x1, y1] = groundIconBox.call(this, L, f, img.width / img.pixelRatio, img.height / img.pixelRatio, L.p.iconRotate.eval(z, f) * Math.PI / 180, t.m[0], t.m[1], depth, L.p.textAlign.eval(z, f) === 'map'), [mx, my] = this.iconMove(L, t.m[0], t.m[1], t.x, t.y);
+        if (x0 + mx <= box[2] && x1 + mx >= box[0] && y0 + my <= box[3] && y1 + my >= box[1]) return true;
+    }
     if (own.length) return false;
-    const tr = this.tr, z = tr.zoom, g = q.geometry, f: Feature = {type: 1, id: q.id, properties: q.properties};
     const points = g?.type === 'Point' ? [g.coordinates as number[]] : g?.type === 'MultiPoint' ? g.coordinates as number[][] : null;
     // (A `{name}` token of the text is replaced as the tiles replace it, so that the text is the one that is drawn.)
     const field = String(L.p.field.eval(z, f) ?? ''), text = L.p.field.tokens ? field.replace(/\{([^}]+)\}/g, (_, k) => f.properties[k] ?? '') : field;
