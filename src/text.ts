@@ -64,6 +64,32 @@ export function graphemes(s: string): string[] {
     return segmenter ? Array.from(segmenter.segment(s), (x: any) => x.segment) : Array.from(s);
 }
 
+// Where a line can break, as in MapLibre: after a space, a hyphen or a dash, "/", "&", "+", ")", a soft hyphen, a middle
+// dot, a zero-width space, an image in the text or an ideograph; before "(" and before an ideograph; and between two
+// words of a script that is written without spaces (Thai, Lao, Khmer, Burmese, ...), where the browser finds the words.
+const BREAK_AFTER = /[\s\-/&+)\u00AD\u00B7\u200B\u2010\u2013\u2027\uE100-\uE7FF]/, IDEO_BREAK = /[⺀-鿿가-힯]/;
+const WORDLESS = /[\u0E01-\u0E3A\u0E40-\u0E4E\u0E81-\u0EDF\u0F00-\u0FD4\u1000-\u109F\u1780-\u17DD\u1950-\u19DF\u1A20-\u1AAD\u1B00-\u1B7F\uA980-\uA9FE\uAA60-\uAADF]/;
+const wordSegmenter = segmenter && new (Intl as any).Segmenter(undefined, {granularity: 'word'});
+/** Splits a paragraph into the units between which a line can break. A style character stays with the character after it. */
+function splitWords(para: string): string[] {
+    const isStyle = (k: number) => para.charCodeAt(k) >= 0xE800 && para.charCodeAt(k) <= 0xEFFF;
+    const plain = para.replace(STYLE_CHARS, '');
+    const bounds: Set<number> | null = wordSegmenter && WORDLESS.test(plain) ? new Set(Array.from(wordSegmenter.segment(plain), (x: any) => x.index as number)) : null;
+    const words: string[] = [];
+    let from = 0, prev = '', p = -1;
+    for (let k = 0; k < para.length; k++) {
+        if (isStyle(k)) continue;
+        const c = para[k], at = k > 0 && isStyle(k - 1) ? k - 1 : k;
+        p++;
+        if (c >= '\uDC00' && c <= '\uDFFF') continue;
+        if (prev && (BREAK_AFTER.test(prev) || IDEO_BREAK.test(prev) || IDEO_BREAK.test(c) || c === '(' && k < para.length - 1 ||
+            bounds?.has(p) && WORDLESS.test(prev) && WORDLESS.test(c))) { words.push(para.slice(from, at)); from = at; }
+        prev = c;
+    }
+    words.push(para.slice(from));
+    return words.filter(w => w.length);
+}
+
 /**
  * Breaks text into lines the way MapLibre does: not by filling each line, but by choosing the breaks that leave the
  * lines closest to one even width (so a label is a balanced block rather than a long line and a stub). A short last
@@ -76,9 +102,10 @@ function wrap(text: string, maxWidth: number, measure: (s: string) => number): s
     let total = 0;
     for (const para of paras) total += measure(para);
     const target = total / Math.max(1, Math.ceil(total / maxWidth));
+    const zwsp = text.includes('\u200B');
     for (let pi = 0; pi < paras.length; pi++) {
         const para = paras[pi];
-        const words = para.split(/(?<=\s)|(?<=[⺀-鿿가-힯])|(?<![\uE800-\uEFFF])(?=[⺀-鿿가-힯])|(?=[\uE800-\uEFFF][⺀-鿿가-힯])/).filter(w => w.length);
+        const words = splitWords(para);
         // (The number of lines comes from the full width, spaces included; the break positions from widths without them.)
         const widths = words.map(w => measure(w.trim()));
         if (!words.length) continue;
@@ -89,7 +116,8 @@ function wrap(text: string, maxWidth: number, measure: (s: string) => number): s
             x += widths[i - 1];
             const last = i === words.length;
             // Opening brackets prefer to start a line and closing ones to end it, so breaks beside them cost a little.
-            const penalty = !last && (/[(（]\s*$/.test(words[i - 1]) || /^[)）]/.test(words[i])) ? 50 : 0;
+            // A break between ideographs costs more when the text marks better places with zero-width spaces, as in MapLibre.
+            const penalty = last ? 0 : (/[(（]\s*$/.test(words[i - 1]) ? 50 : 0) + (/^[)）]/.test(words[i]) ? 50 : 0) + (zwsp && IDEO_BREAK.test(words[i - 1].slice(-1)) ? 150 : 0);
             let choice = {badness: Infinity, prev: 0, x};
             for (let j = 0; j < i; j++) {
                 const width = x - best[j].x;
