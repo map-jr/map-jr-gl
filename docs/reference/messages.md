@@ -1934,7 +1934,11 @@ server render: the pitch is <pitch>, and the server render draws the first view 
 `Warning` `Compat entry` `Development build only`
 
 ```text
-<where>: <why>
+<where>: <why> The map draws the layer, and MapLibre GL JS writes a warning too. Write the whole filter in expression syntax.
+```
+
+```text
+<where>: <why>. The map draws the layer, and MapLibre GL JS writes a warning too. Write the whole filter in expression syntax.
 ```
 
 ## E10017

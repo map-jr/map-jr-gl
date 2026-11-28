@@ -85,7 +85,7 @@ texts[214] = call => `${call}: a marker takes "offset" as a pair, [x, y], so a n
 texts[1647] = (option, call) => `${call}: "${option}" is not an option of an overlay, so it has no effect. ${overlayOption(option) ? `Write "${overlayOption(option)}". ` : ''}The options are ${overlayOptions.join(', ')}.`;
 texts[1139] = (where, near) => `${where}: a layer of this type has no such property in the style specification, so the map ignores it. ${near ? `Write "${near}".` : 'Check the name in the style specification, or remove it.'}`;
 texts[1748] = (where, why) => `${where}: ${why}. The map draws what it can, but MapLibre GL JS rejects the style. Correct it as the style specification requires.`;
-texts[2555] = (where, why) => `${where}: ${why}`;
+texts[2555] = (where, why) => `${where}: ${why}${why.endsWith('.') ? '' : '.'} The map draws the layer, and MapLibre GL JS writes a warning too. Write the whole filter in expression syntax.`;
 texts[11139] = (where, near) => `${where}: unknown property "${where.slice(where.lastIndexOf('.') + 1)}". The map draws the layer without it, but MapLibre GL JS rejects the style. ${near ? `Write "${near}".` : 'Check the name in the style specification, or remove it.'}`;
 texts[1683] = (where, group) => `${where}: this is a ${group} property. The map reads it here all the same, but MapLibre GL JS rejects the style. Move it to "${group}".`;
 texts[11683] = (where, group) => `${where}: unknown property "${where.slice(where.lastIndexOf('.') + 1)}". The map reads it here all the same, but it is a ${group} property, and MapLibre GL JS rejects the style. Move it to "${group}".`;
