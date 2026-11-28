@@ -93,6 +93,13 @@ export interface Placed {
     /** The distance of the anchor from the camera when placed (see `moveLabel`). */
     depth: number;
     opacity: number;
+    /**
+     * The collision boxes of the text in pixels of the screen at the placement (one box, or the box of each circle of text
+     * along a line), and the collision box of the icon, also when the layer ignores placement. A query tests these boxes,
+     * moved with the anchor, as MapLibre GL JS tests its collision boxes (see `textBoxes` in engine-query.ts, #2586).
+     */
+    boxes?: number[][];
+    iconBox?: number[];
 }
 
 /**
@@ -637,7 +644,7 @@ export function placeLabels(
                         bentBoxes = l.ignore ? [] : curved.boxes;
                         const n = 2 ** it.id.z, q = 2 ** 22;
                         const key = `${L.id}|${l.text}||${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
-                        bent = {x: ax + mx, y: ay + my, angle: 0, size: (curved.ground ? size / persp / persp : size) * fit, shaped, src: l, curve: curved.curve, ground: curved.ground, key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, alpha, fixedSize: L.fixedSize || undefined, tt};
+                        bent = {x: ax + mx, y: ay + my, angle: 0, size: (curved.ground ? size / persp / persp : size) * fit, shaped, src: l, curve: curved.curve, ground: curved.ground, key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, alpha, fixedSize: L.fixedSize || undefined, tt, boxes: curved.boxes};
                         // (No icon: the text is all. With an icon, the icon is found below, as for other text.)
                         if (!meta) { for (const b of bentBoxes) grid.insert(...b); out.push(bent); continue; }
                     } else if (line && !l.upright) {
@@ -880,7 +887,7 @@ export function placeLabels(
                         for (const g of [icon.gx, icon.gy]) if (g) for (let i = 1; i < g.length; i += 2) g[i] /= persp;
                     }
                 }
-                if (bent) { bent.icon = icon; for (const b of bentBoxes) grid.insert(...b); if (iconBox && !l.icon!.ignore) grid.insert(...iconBox); out.push(bent); continue; }
+                if (bent) { bent.icon = icon; bent.iconBox = iconBox ?? undefined; for (const b of bentBoxes) grid.insert(...b); if (iconBox && !l.icon!.ignore) grid.insert(...iconBox); out.push(bent); continue; }
                 if (!textBox && !icon) continue;
                 if (textBox && twinKey && !twin) twins.set(twinKey, {layer: L.id, group: L.group, box: textBox, x: tx, y: ty, justify});
                 if (textBox && !l.ignore && !twin) grid.insert(...textBox);
@@ -889,7 +896,7 @@ export function placeLabels(
                 // Features with the same text at the same position keep separate keys, in their order in the tile.
                 const same = keys.get(key) ?? 0;
                 keys.set(key, same + 1);
-                out.push({x: tx, y: ty, angle: textAngle, frame, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, justify, alpha, anchor, fixedSize: fixed || undefined, tt: textBox ? tt : undefined});
+                out.push({x: tx, y: ty, angle: textAngle, frame, size, shaped: textBox ? shaped : null, src: l, icon, key: same ? key + '#' + same : key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, justify, alpha, anchor, fixedSize: fixed || undefined, tt: textBox ? tt : undefined, boxes: textBox ? [textBox] : undefined, iconBox: iconBox ?? undefined});
             }
         }
         if (drawByY && out.length - first > 1) {
