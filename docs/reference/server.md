@@ -303,7 +303,7 @@ The guide [Server rendering](../guide/server-rendering.md) shows the cases.
 | `colorScheme` | `'auto' \| 'light' \| 'dark'` | `'light'` | The colors of the attribution and the controls, and the [style](#style) of a pair `{light, dark}`. |
 | `controls` | `ControlSpec[]` | | The controls of the description, for example `[navigation(), scale()]`. With the option (also `[]`), the HTML has these controls and the attribution as markup. `custom()` controls are left out. |
 | `locale` | `Record<string, string>` | | The texts of the controls, as `locale` of the description. It has an effect with `controls`. |
-| `nonce` | `string` | | The nonce of a Content Security Policy with `style-src 'nonce-…'` for the style sheet of the controls. It has an effect with `controls`. |
+| `nonce` | `string` | | The nonce of a Content Security Policy with `style-src 'nonce-…'`. The position and size of the first view are rules of a style sheet that has it, not `style` attributes. |
 | `minZoom`, `maxZoom` | `number` | `-2`, `22` | The limits of the zoom of the description. At a limit, the zoom button is disabled with `controls`. Without `fitMaxZoom`, `maxZoom` is the highest zoom of the fit to `bounds`. |
 | `projection` | `{type?: string}` | | The projection of the description. With `{type: 'globe'}`, the globe control is on. It has an effect with `controls`. |
 | `attributionOptions` | `{compact?: boolean; customAttribution?: string \| string[]}` | | The options of the attribution, as `attribution` of the description. It has an effect with `controls`. |

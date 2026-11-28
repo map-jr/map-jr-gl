@@ -348,7 +348,7 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
             const r = f.rings[ri], keep = f.keep?.[ri];
             if (keep && keep[r.length / 2] < (f.type === 3 ? sqTol : Math.sqrt(sqTol))) continue;
             let pts: number[] = [];
-            const g = f.type === 2 ? 2 : 1;
+            const g = f.type === 1 ? 1 : 2;
             // With `lineMetrics`, the distance along the full line at each vertex, so that `line-progress` does not
             // depend on simplification (#1890). Such a line keeps every vertex until it is clipped.
             const d = f.type === 2 && metrics ? (f.dist ??= [])[ri] ??= lengths(r) : null, skip: boolean[] = [];
@@ -371,8 +371,8 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
                 }
                 const drop = !!keep && keep[i / 2] <= sqTol;
                 if (drop && !d) continue;
-                // (The vertices of a line are rounded to halves of a tile unit, as geojson-vt rounds them to whole units
-                // of a tile 8192 wide; see tessellateLine. Other vertices are rounded to whole units.)
+                // (The vertices of a line or a polygon are rounded to halves of a tile unit, as geojson-vt rounds them to
+                // whole units of a tile 8192 wide; see tessellateLine and tessellateExtrusion. Points are rounded to whole units.)
                 const tx = Math.round(((r[i] + w) * n - x) * EXTENT * g) / g, ty = Math.round((r[i + 1] * n - y) * EXTENT * g) / g, m = pts.length;
                 if (d) pts.push(tx, ty), skip.push(drop);
                 else if (m < 2 || tx !== pts[m - 2] || ty !== pts[m - 1]) pts.push(tx, ty); // also thins vertices closer than the rounding step
@@ -384,7 +384,7 @@ export function sliceGeoJSON(source: Prepared[] | PreparedSource, z: number, x: 
                 continue;
             }
             if (f.type === 1) { if (pts[0] >= -BUFFER && pts[0] <= EXTENT + BUFFER && pts[1] >= -BUFFER && pts[1] <= EXTENT + BUFFER) rings.push(pts); } else if (f.type === 2) rings.push(...clipLine(pts, -BUFFER, EXTENT + BUFFER).filter(p => p.length >= 4));
-            else { pts = clipRing(pts, -BUFFER, EXTENT + BUFFER); if (pts.length >= 6) rings.push(pts.map(Math.round)); }
+            else { pts = clipRing(pts, -BUFFER, EXTENT + BUFFER); if (pts.length >= 6) rings.push(pts.map(t => Math.round(t * 2) / 2)); }
         }
         if (!rings.length) continue;
         feature(rings, f.properties);

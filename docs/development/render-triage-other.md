@@ -33,10 +33,8 @@ table names the causes that this triage found. "label" names a label of
 | `combinations/color-relief--hillshade--vector-fill--color-relief--hillshade` | near 1.6% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
 | `combinations/fill-extrusion-translucent--hillshade-translucent` | near 3.6% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
 | `combinations/fill-extrusion-translucent--symbol-translucent` | differ 5.2% | The icon along the edge of the polygon (`symbol-placement: line`) sits at another point of the line than in MapLibre. | #1774 |
-| `combinations/fill-opaque--fill-extrusion-translucent` | near 1.4% | The edges of the extrusion are a pixel above and to the right of MapLibre's. | #1803 |
 | `combinations/fill-opaque--hillshade-translucent` | near 3.1% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
 | `combinations/fill-opaque--symbol-translucent` | near 4.8% | The icon along the edge of the polygon (`symbol-placement: line`) sits at another point of the line than in MapLibre. | #1774 |
-| `combinations/fill-translucent--fill-extrusion-translucent` | near 1.4% | The edges of the extrusion are a pixel above and to the right of MapLibre's. | #1803 |
 | `combinations/fill-translucent--hillshade-translucent` | near 3.3% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
 | `combinations/fill-translucent--symbol-translucent` | differ 5.2% | The icon along the edge of the polygon (`symbol-placement: line`) sits at another point of the line than in MapLibre. | #1774 |
 | `combinations/heatmap-translucent--background-opaque` | differ 97.8% | The heatmap is drawn under the opaque layer above it. | label (heatmap over an opaque layer above it, wontfix) |
@@ -44,7 +42,6 @@ table names the causes that this triage found. "label" names a label of
 | `combinations/heatmap-translucent--hillshade-translucent` | near 2.2% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
 | `combinations/heatmap-translucent--symbol-translucent` | near 4.7% | The icon along the edge of the polygon (`symbol-placement: line`) sits at another point of the line than in MapLibre. | #1774 |
 | `combinations/hillshade-translucent--circle-translucent` | near 3.2% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
-| `combinations/hillshade-translucent--fill-extrusion-translucent` | near 3.7% | The edges of the extrusion are a pixel above and to the right of MapLibre's. | #1803 |
 | `combinations/hillshade-translucent--fill-opaque` | near 3.0% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
 | `combinations/hillshade-translucent--fill-translucent` | near 3.2% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
 | `combinations/hillshade-translucent--hillshade-translucent` | near 3.6% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
@@ -185,7 +182,6 @@ table names the causes that this triage found. "label" names a label of
 | Issue | Cause | Tests |
 |---|---|---|
 | #1802 | The hillshade differs from MapLibre by a pixel along ridges and at tile edges. | 27 |
-| #1803 | `fill-extrusion` edges are a pixel above and to the right of MapLibre's at pitch 0. | 3 |
 | #1804 | `line-dasharray`: the ends of the dashes are sharp where MapLibre softens them. | 5 |
 | #1805 | `line-dasharray` with `line-cap: round`: dashes have another length and position. | 3 |
 | #1807 | `line-dasharray` for each feature gives longer dashes than in MapLibre. | 1 |
