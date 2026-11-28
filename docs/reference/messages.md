@@ -1929,6 +1929,14 @@ server render: the layer "<layerId>" is not drawn, because the server render doe
 server render: the pitch is <pitch>, and the server render draws the first view flat, as if the pitch were 0, until #395. The map in the browser uses the pitch. When that is intended, nothing needs to change.
 ```
 
+## E2555
+
+`Warning` `Compat entry` `Development build only`
+
+```text
+<where>: <why>
+```
+
 ## E10017
 
 `Warning` `Both entries`
@@ -2631,14 +2639,6 @@ styles(): preview has "center" without "zoom", so the pictures show the view of 
 
 ```text
 server render: the options have "center" but no "zoom", and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".
-```
-
-## E21748
-
-`Warning` `Compat entry` `Development build only`
-
-```text
-<where>: <why>
 ```
 
 ## E21846

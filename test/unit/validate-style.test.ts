@@ -167,5 +167,5 @@ test('a legacy filter mixed into an expression is one console warning with the t
     zoomCurveErrors(style, reported, e => errors.push(e.message));
     zoomCurveErrors(style, reported, e => errors.push(e.message));
     assert.deepEqual(errors, []);
-    assert.deepEqual(warned, ['[map-jr-gl] E21748 layers[0].filter[1]: Mixing deprecated filter syntax with expression syntax is not supported. Convert ["has","$id"] to expression syntax.']);
+    assert.deepEqual(warned, ['[map-jr-gl] E2555 layers[0].filter[1]: Mixing deprecated filter syntax with expression syntax is not supported. Convert ["has","$id"] to expression syntax.']);
 });

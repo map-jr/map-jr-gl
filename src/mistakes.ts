@@ -85,7 +85,7 @@ texts[214] = call => `${call}: a marker takes "offset" as a pair, [x, y], so a n
 texts[1647] = (option, call) => `${call}: "${option}" is not an option of an overlay, so it has no effect. ${overlayOption(option) ? `Write "${overlayOption(option)}". ` : ''}The options are ${overlayOptions.join(', ')}.`;
 texts[1139] = (where, near) => `${where}: a layer of this type has no such property in the style specification, so the map ignores it. ${near ? `Write "${near}".` : 'Check the name in the style specification, or remove it.'}`;
 texts[1748] = (where, why) => `${where}: ${why}. The map draws what it can, but MapLibre GL JS rejects the style. Correct it as the style specification requires.`;
-texts[21748] = (where, why) => `${where}: ${why}`;
+texts[2555] = (where, why) => `${where}: ${why}`;
 texts[11139] = (where, near) => `${where}: unknown property "${where.slice(where.lastIndexOf('.') + 1)}". The map draws the layer without it, but MapLibre GL JS rejects the style. ${near ? `Write "${near}".` : 'Check the name in the style specification, or remove it.'}`;
 texts[1683] = (where, group) => `${where}: this is a ${group} property. The map reads it here all the same, but MapLibre GL JS rejects the style. Move it to "${group}".`;
 texts[11683] = (where, group) => `${where}: unknown property "${where.slice(where.lastIndexOf('.') + 1)}". The map reads it here all the same, but it is a ${group} property, and MapLibre GL JS rejects the style. Move it to "${group}".`;
@@ -184,7 +184,7 @@ export const zoomCurveError = (e: unknown): string => {
  * Unless `noValidate` (the map option `validateStyle: false`), it does the same for a required field that is missing (`validateStyle`, #1748). */
 export function zoomCurveErrors(style: {sources?: Record<string, any>; layers?: any[]} | undefined, reported: Set<string>, report: (error: Error) => void, noValidate?: boolean) {
     // (A legacy filter mixed into an expression is a warning in MapLibre GL JS, so it is a warning here, with MapLibre's text.)
-    if (!noValidate) validateStyle(style, (where, why, warning) => { const key = where + ' ' + why; if (!reported.has(key)) { reported.add(key); if (warning) console.warn(mistake(21748, where, why)); else report(new Error(mistake(1748, where, why))); } });
+    if (!noValidate) validateStyle(style, (where, why, warning) => { const key = where + ' ' + why; if (!reported.has(key)) { reported.add(key); if (warning) console.warn(mistake(2555, where, why)); else report(new Error(mistake(1748, where, why))); } });
     for (const l of style?.layers ?? []) for (const g of ['paint', 'layout']) for (const k in l?.[g]) {
         const why = zoomCurveError(l[g][k]), key = `${l.id} ${g} ${k} ${JSON.stringify(l[g][k])}`;
         if (why && !reported.has(key)) { reported.add(key); report(new Error(mistake(1057, `layers.${l.id}.${g}.${k}`, why))); }
