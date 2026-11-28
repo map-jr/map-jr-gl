@@ -35,3 +35,12 @@ test('a styled ")" in rich text keeps the penalty of a break before it (#2593)',
     assert.deepEqual(plain, ['Aaaaaaa', 'Bbbbbbb )', 'Ccc']);
     assert.deepEqual(rich, plain);
 });
+
+test('an empty line of the text stays as a line, as in MapLibre (#2594, #1792)', () => {
+    assert.deepEqual(lines('one\n\nthree', 50), ['one', '', 'three']);
+});
+
+test('control characters are not shaped (#2594, #1793)', () => {
+    assert.deepEqual(lines('ab\x1Ccd', 50), ['abcd']);
+    assert.deepEqual(lines('a\x00b\x7Fc\nd', 50), ['abc', 'd']);
+});
