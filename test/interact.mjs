@@ -3272,8 +3272,12 @@ for (const mode of renderers) {
             out.cross = await ask(m, found[0] + 3, a.y);
             done();
             ({m, done} = await make([A], {'text-pitch-alignment': 'map', 'text-rotation-alignment': 'map'}, 60));
+            // (The text is found on the circles of placement, which end a little inside its first and last glyph: the column is
+            // the middle of the first circle that the row through the center of the map meets.)
             const c = m.project([0, 0]), across = [];
-            for (let dy = -30; dy <= 30; dy++) if (await ask(m, c.x, c.y + dy)) across.push(dy);
+            let left = 0;
+            while (left < 600 && !await ask(m, left, c.y)) left++;
+            for (let dy = -30; dy <= 30; dy++) if (await ask(m, left + 8, c.y + dy)) across.push(dy);
             out.pitch = [across[0], across.at(-1)];
             done();
             return out;
@@ -3293,15 +3297,22 @@ for (const mode of renderers) {
                     sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [line([-40, 0], [-13, 0]), line([-13, 0], [13, 0]), line([13, 0], [40, 0])]}}},
                     layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-size': 16}}]}});
                 await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
-                const y = m.project([0, 0]).y, found = [];
-                for (const lng of [-25, -5, 5, 25]) found.push((await m.queryRenderedFeatures([m.project([lng, 0]).x, y], {layers: ['t']})).length);
-                out[renderer] = {all: (await m.queryRenderedFeatures({layers: ['t']})).length, found};
+                // (The row through the road is scanned from end to end, because the text is found on its circles, which leave a gap
+                // between them and end inside its first and last glyph. `found` counts the hits in each of the three lines.)
+                const y = m.project([0, 0]).y, found = [0, 0, 0], a = m.project([-40, 0]).x, b = m.project([40, 0]).x;
+                let most = 0;
+                for (let x = a; x < b; x += 2) {
+                    const n = (await m.queryRenderedFeatures([x, y], {layers: ['t']})).length, lng = -40 + (x - a) / (b - a) * 80;
+                    most = Math.max(most, n);
+                    if (n) found[lng < -13 ? 0 : lng < 13 ? 1 : 2]++;
+                }
+                out[renderer] = {all: (await m.queryRenderedFeatures({layers: ['t']})).length, most, found};
                 m.remove(); el.remove();
             }
             return out;
         });
         check('[main] queryRenderedFeatures finds the label of a road that comes as several lines once, with both renderers (#2460)',
-            ['main', 'worker'].every(r => roadParts[r].all === 1 && roadParts[r].found.every(n => n <= 1) && roadParts[r].found.filter(n => n === 1).length >= 3), JSON.stringify(roadParts));
+            ['main', 'worker'].every(r => roadParts[r].all === 1 && roadParts[r].most === 1 && roadParts[r].found.filter(n => n > 0).length >= 2), JSON.stringify(roadParts));
         // On the globe a query finds text on a line where its glyphs are drawn, as MapLibre GL JS does: the line between
         // two of its points is a curve on the screen, and the glyphs lie on that curve (#1995). The map is cut into cells
         // of 25 pixels; each cell with dark pixels of the text must be found by a query of the cell, at zoom 2.5 and across

@@ -83,8 +83,20 @@ export async function queryRendered(this: any, c: Extract<Command, {type: 'query
             group.sets.push(circle && s.size ? {...s, radius: 0, size: {...s.size, scale: pitched!.k}} : reach || circle ? {...s, radius: 0} : s);
             boxes.set(key, group);
         }
-        for (const {box, pad, sets, exact} of boxes.values()) for (const t of tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom, pad)) {
-            jobs.push(queryBackend.call(this, name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y, this.dpr), {
+        for (const {box, pad, sets, exact} of boxes.values()) {
+            const asked = new Set<string>(), tiles = tilesUnderBox(this.tr, box, src.minzoom, src.maxzoom, pad);
+            for (const t of tiles) asked.add(`${t.z}/${t.x}/${t.y}`);
+            // (A label can belong to a tile of another zoom than the tiles under the rectangle, as on a tilted map or on the globe.
+            // The features of that tile that the label names are asked from it, with a rectangle that touches nothing.)
+            for (const s of sets) for (const [key, at] of wants.get(s.layer) ?? []) {
+                if (asked.has(key)) continue;
+                const [z, x, y] = key.split('/').map(Number);
+                jobs.push(queryBackend.call(this, name, z, x, y).query(tileURL(src, z, x, y, this.dpr), {
+                    source: name, z, zoom: Math.max(z, Math.floor(this.tr.zoom)), x, y, px: 0, py: 0, radius: 0, box: [-1e6, -1e6, -1e6 + 1, -1e6 + 1], geometry: true,
+                    sets: [{at, layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: 0, ring: s.ring}],
+                }));
+            }
+            for (const t of tiles) jobs.push(queryBackend.call(this, name, t.z, t.x, t.y).query(tileURL(src, t.z, t.x, t.y, this.dpr), {
                 source: name, z: t.z, zoom: Math.max(t.z, Math.floor(this.tr.zoom)), x: t.x, y: t.y, px: 0, py: 0, radius: 0, box: t.box, geometry: c.geometry || exact,
                 sets: sets.map(s => ({at: wants.get(s.layer)?.get(`${t.z}/${t.x}/${t.y}`) ?? (wants.has(s.layer) ? [] : undefined), layer: s.layer, sourceLayer: s.sourceLayer, filter: s.filter, also: s.also, radius: s.radius * t.scale, ring: s.ring, size: s.size && (s.radius || s.size.scale) ? {...s.size, scale: t.scale * (s.size.scale ?? 1)} : undefined})),
             }));
