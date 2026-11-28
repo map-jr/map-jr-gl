@@ -88,8 +88,8 @@ to protect those qualities.
   each) can share a pull request, whose body says `Fixes #N` for each, because each pull request runs all of CI.
 - **The fix of a root cause closes its cluster issue and each symptom that it resolves.** The pull request has a test
   for each symptom that it closes, and its body says `Fixes #N` for the cluster issue and for each of those symptom
-  issues. A symptom that the fix does not resolve leaves the list before the merge: it gets its own issue, or the
-  cluster issue stays open with that line.
+  issues. When the fix leaves a symptom, the cluster issue stays open with that line, or the symptom moves to an
+  issue of its own cause.
 - After a merge, the `Browsers` workflow measures and tests in Chromium, Firefox and WebKit on three systems. Read
   its results (`git fetch origin bench-results && git show origin/bench-results:README.md`) before you ask the
   owner to test on a device. Started by hand, it also runs Safari on a macOS runner: start that run when a change
