@@ -461,8 +461,8 @@ that a map shows, pass its `center`, `zoom` and `bearing`.
 
 ## What the server renderer does not draw
 
-The server renderer leaves out hillshade, color relief, heatmap layers, hollow lines, image patterns and 3D terrain. It writes one warning for each layer that it leaves out. The live map
-draws them when it takes over. [What the server renderer does not draw](../reference/server.md#what-the-server-renderer-does-not-draw)
+The server renderer leaves out hillshade, color relief, heatmap layers, hollow lines, image patterns and 3D
+terrain. It writes one warning for each layer that it leaves out. The live map draws them when it takes over. [What the server renderer does not draw](../reference/server.md#what-the-server-renderer-does-not-draw)
 lists each case and what the render shows instead.
 
 A view with `pitch` is drawn with the projection of the map, up to a pitch of 60. In the render, lines keep their

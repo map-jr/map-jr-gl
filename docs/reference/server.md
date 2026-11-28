@@ -267,9 +267,9 @@ labels of the first view are where the map draws them when it takes over. These 
 
 | Part | What the render shows |
 |---|---|
-| A `pitch` above 60 | The view at a pitch of 60, the default `maxPitch` of the map. The render does not read `maxPitch` of the description, so a map with a larger `maxPitch` tilts further when it takes over. |
+| A `pitch` above 60 | The view at a pitch of 60, the default `maxPitch` of the map. The render does not read `maxPitch`, so a map with a larger `maxPitch` and a pitch above 60 shows a different view when it takes over. |
 | Lines | Each line has its `line-width` and its dashes in pixels over its whole length. The map draws a line thinner where it is farther from the camera. |
-| Raster tiles | Each tile is drawn in 4 by 4 cells, and each cell is flat. A straight line of the image can bend a little at the edge of a cell, and a thin seam can show between cells. |
+| Raster tiles | Each tile is drawn in 4 by 4 cells, and each cell has one affine transform. Near the camera, a line of the image can bend at the edge of a cell, and a gap of the background can show between cells. |
 | Circles with `circle-pitch-alignment: map` | A circle that faces the screen. With `circle-pitch-scale: map` (the default), its radius follows the distance from the camera, as in the map. |
 
 ## `renderFirstView`
