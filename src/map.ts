@@ -871,7 +871,7 @@ export class Map {
             // (A rotate drag that pauses with the button down has not ended: MapLibre GL JS ends it once, at the release, #1873.)
             // (On the worker renderer the reports of a rotate drag can come after its release: the drag ends at the report
             // of its last turn, with one `moveend`, #2163.)
-            if (this.easedDuringDrag && this.moving && !e.moving && (e.seq ?? this.beganAt) >= this.beganAt) this.endEase();
+            if (this.easedDuringDrag && !e.moving && (e.seq ?? this.beganAt) >= this.beganAt) this.endEase();
             if (this.moving && !e.moving && (e.seq ?? this.beganAt) >= this.beganAt && !this.dragging && !this.awaitingInertia && !this.dragRotate.active && !this.turnPending()) this.settle();
         } else if (e.type === 'resource') {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
@@ -2265,15 +2265,20 @@ export class Map {
     protected dropGesture?: () => void;
     /**
      * @internal Ends the gesture that runs, as `stop()` of MapLibre GL JS does (#2529): an ease during it ends with its end
-     * events, `dragend` fires, and the pointers that stay down move nothing. The drag has no `moveend`, as there.
+     * events, then `dragend` and the end events of the zoom, rotate and pitch of the gesture fire, and the pointers that stay
+     * down move nothing. The gesture has no `moveend`, as there.
      */
     protected endGesture() {
         if (!this.dragging) return;
         this.endEase();
+        const [z, r, p] = [this.zooming, this.rotating, this.pitching];
         this.dragging = this.moving = this.zooming = this.rotating = this.pitching = false;
         this.awaitingInertia = false;
         this.dropGesture?.();
         if (this.dragged) { this.dragged = false; this.fire('dragend'); }
+        if (z) this.fire('zoomend');
+        if (r) this.fire('rotateend');
+        if (p) this.fire('pitchend');
     }
     /**
      * Ends the movement of a gesture at its release: the end events of its zoom, rotate and pitch, then `moveend`. An
@@ -2468,7 +2473,7 @@ export class Map {
                     pinchMoved.add(e.pointerId);
                     if (!pinchFrame) pinchFrame = requestAnimationFrame(() => {
                         pinchFrame = 0;
-                        if (gesture !== g || this.removed || pinchMoved.size < 2) return;
+                        if (gesture !== g || this.removed || ![...pointers.keys()].slice(0, 2).every(id => pinchMoved.has(id))) return;
                         pinchMoved.clear();
                         const {mid} = twoFingers(), from = pinchFrom!;
                         pinchFrom = mid;

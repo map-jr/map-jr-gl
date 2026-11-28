@@ -827,7 +827,7 @@ export class Map extends CoreMap {
     }
     /**
      * As in MapLibre GL JS, a movement that runs ends during the call, with its end events and no `move`, and a gesture
-     * ends too: an ease during it fires its end events, then `dragend` fires (#2529). The reports of the engine up to
+     * ends too: an ease during it fires its end events, then `dragend` fires. The reports of the engine up to
      * this command fire no events.
      */
     override stop() {

@@ -603,7 +603,7 @@ export interface MapEvents {
     pitch: MapEventBase<'pitch'>;
     /** The pitch has stopped changing. */
     pitchend: MapEventBase<'pitchend'>;
-    /** The user starts to drag the map. */
+    /** The user starts to drag the map. A pinch fires it once the center of its fingers moves, as in MapLibre GL JS. */
     dragstart: MapDragEvent;
     /** The user drags the map. */
     drag: MapDragEvent;

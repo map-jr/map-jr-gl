@@ -135,7 +135,7 @@ library" names a member that MapLibre GL JS does not have.
 | `addSource` | `(id: string, source: object) => Map` | Adds a source to the style, as in MapLibre GL JS. |
 | `removeSource` | `(id: string) => Map` | Removes a source from the style, as in MapLibre GL JS. |
 | `jumpTo` | `(o: CameraInput, eventData?: EventData \| undefined) => Map` | Moves the camera to a view without an animation, as in MapLibre GL JS. |
-| `stop` | `() => Map` | As in MapLibre GL JS, a movement that runs ends during the call, with its end events and no `move`, and a gesture ends too: an ease during it fires its end events, then `dragend` fires (#2529). |
+| `stop` | `() => Map` | As in MapLibre GL JS, a movement that runs ends during the call, with its end events and no `move`, and a gesture ends too: an ease during it fires its end events, then `dragend` fires. |
 | `fitBounds` | `(bounds: LngLatBoundsInput, o?: FitBoundsOptions, eventData?: EventData \| undefined) => Map` | Moves the camera to fit a box, as in MapLibre GL JS: it flies there as `flyTo` does, or eases there as `easeTo` does when `o` sets `linear`. |
 | `fitScreenCoordinates` | `(p0: PointLike, p1: PointLike, bearing: number, o?: FitBoundsOptions, eventData?: EventData \| undefined) => Map` | Moves the map so that the box between the screen points `p0` and `p1` (CSS pixels) fills the view at `bearing`. |
 | `flyTo` | `(o: Omit<CameraOptions, 'padding'> & {padding?: PaddingInput} & object & `[`FlyOptions`](map.md#flyoptions)`, eventData?: EventData \| undefined) => Map` | Moves the camera along a curve that zooms out and back in, with the options of `flyTo` of MapLibre GL JS 6.17. The `object` has the members `duration`, `around`, `essential`, `offset` and `easing`. |
