@@ -216,7 +216,16 @@ export function validateStyle(style: {sources?: Record<string, any>; layers?: an
         if (!t) { found(where, '"type" is required'); continue; }
         if (t === 'canvas') { found(where, 'Please use runtime APIs to add canvas sources, rather than including them in stylesheets.'); continue; }
         if (!sourceTypes.includes(t)) { checkValue(where + '.type', t, '!e' + sourceTypes.join(), found); continue; }
-        if (t === 'geojson') need(where, s, 'data');
+        if (t === 'geojson') {
+            need(where, s, 'data');
+            // (MapLibre checks the map and the reduce expression of each property of `clusterProperties` of a clustered source. A property that is not a list is left out here, where MapLibre throws.)
+            if (s.cluster && s.clusterProperties && typeof s.clusterProperties === 'object') for (const prop in s.clusterProperties) {
+                const p = s.clusterProperties[prop];
+                if (!Array.isArray(p)) continue;
+                const [operator, map] = p;
+                for (const [name, e] of [['map', map], ['reduce', typeof operator === 'string' ? [operator, ['accumulated'], ['get', prop]] : operator]] as const) try { for (const r of expressionErrors(e, ' dzi', 'cluster')) found(`${where}.${prop}.${name}${r.key}`, r.error); } catch { /* too deep for the stack */ }
+            }
+        }
         else if (t === 'video' || t === 'image') { if (t === 'video') need(where, s, 'urls'); need(where, s, 'coordinates'); }
         for (const k in s) {
             // (MapLibre names a property of a raster-dem source with its bare name, and looks up a name before its first dot in the other types.)
@@ -251,8 +260,10 @@ export function validateStyle(style: {sources?: Record<string, any>; layers?: an
             const v = l[g][k], c = values[`${g} ${l.type} ${k}`], e = values[`${g}= ${l.type} ${k}`], at = `${where}.${g}.${k}`;
             // (An expression of a property that takes one gets the type check of src/expr-check.ts, step 3 of #1748.)
             // (An expression too deep for the stack is left to the map, which reports what it cannot draw.)
-            // (A value of a property of an image, formatted text or anchor offsets is checked whatever it is, as MapLibre does: a number for `icon-image`, an array that is not an expression for `text-field`, or an odd array for `text-variable-anchor-offset`. A function, an object with "stops", is left out.)
+            // (A value of a property of an image, formatted text or anchor offsets is checked whatever it is, as MapLibre does: a number for `icon-image`, an array that is not an expression for `text-field`, or an odd array for `text-variable-anchor-offset`. The value of each stop of a function is checked for these three too. The rest of a function is left out.)
             const isExpression = Array.isArray(v) && typeof v[0] === 'string' && operators.split(' ').includes(v[0]);
+            if (e && 'ifv'.includes(e[0]) && Array.isArray(v?.stops) && !Array.isArray(v)) v.stops.forEach((stop: any, j: number) => { if (Array.isArray(stop) && stop.length === 2) stopValue(`${at}.stops[${j}][1]`, stop[1], e, values['layout symbol text-anchor'], found); });
+            if (e && 'ifv'.includes(e[0]) && Array.isArray(v?.stops) && !Array.isArray(v) && v.default !== undefined && (typeof v.default !== 'object' || v.default === null)) stopValue(`${at}.default`, v.default, e, values['layout symbol text-anchor'], found);
             if (e && e[0] === 'v' && !isExpression) { if (v !== null && (typeof v !== 'object' || Array.isArray(v))) anchorOffsets(at, v, values['layout symbol text-anchor'], found); }
             else if (e && ('if'.includes(e[0]) ? Array.isArray(v) || (v !== null && typeof v !== 'object') : isExpression)) { try { for (const r of expressionErrors(v, e, g === 'layout')) found(at + r.key, r.error); } catch { /* see above */ } }
             else if (c) checkValue(at, v, c, found);
@@ -260,6 +271,13 @@ export function validateStyle(style: {sources?: Record<string, any>; layers?: an
         }
         if (l.filter !== undefined) validateFilter(where + '.filter', l.filter, found);
     });
+}
+/** The value `v` of one stop of a function of `icon-image`, `text-field` or `text-variable-anchor-offset` (the code `e` of src/style-spec-values.ts): an expression is an error there, and the other values get the check of the property. */
+function stopValue(where: string, v: any, e: string, anchors: string, found: (where: string, why: string) => void) {
+    if (v !== null && typeof v === 'object' && !Array.isArray(v)) return;
+    if (Array.isArray(v) && typeof v[0] === 'string' && operators.split(' ').includes(v[0])) return found(where, 'expressions are not allowed in function stops.');
+    if (e[0] === 'v') anchorOffsets(where, v, anchors, found);
+    else try { for (const r of expressionErrors(v, e, true)) found(where + r.key, r.error); } catch { /* too deep for the stack */ }
 }
 /** MapLibre's `validateVariableAnchorOffsetCollection`: the value `v` of `text-variable-anchor-offset` that is not an expression is a non-empty array of an even length, with an anchor and an offset of two numbers in turn. `anchors` is the code of the enum of `text-anchor`. */
 function anchorOffsets(where: string, v: any, anchors: string, found: (where: string, why: string) => void) {
@@ -292,10 +310,30 @@ const classify = (f: any): string => {
 /** Calls `found` with MapLibre's text for the `filter` `f` of a layer at `where`: the types of an expression, or the legacy syntax (`validateFilter`, #1748). */
 function validateFilter(where: string, f: any, found: (where: string, why: string) => void) {
     if (classify(f) !== 'l') {
+        const mixed = mixedLegacyFilter(f);
+        if (mixed) found(where + mixed.path.map(i => `[${i}]`).join(''), mixedMessage(mixed.filter));
         if (Array.isArray(f) && typeof f[0] === 'string') try { for (const r of expressionErrors(f, ' dzi', 'filter')) found(where + r.key, r.error); } catch { /* too deep for the stack */ }
         return;
     }
     legacyFilter(where, f, found);
+}
+/** MapLibre's `findMixedLegacyFilter`: the first filter in the legacy syntax inside "all", "any", "none", "!" or "case" of the expression filter `f`, with its path. */
+function mixedLegacyFilter(f: any, path: number[] = []): {path: number[]; filter: any[]} | null {
+    if (!Array.isArray(f) || !f.length) return null;
+    const op = f[0], child = (i: number) => { const c = f[i]; return !Array.isArray(c) ? null : classify(c) === 'l' ? {path: [...path, i], filter: c} : mixedLegacyFilter(c, [...path, i]); };
+    const each = op === 'all' || op === 'any' || op === 'none' ? f.slice(1).map((_, i) => i + 1) : op === '!' ? [1] : op === 'case' ? f.slice(1, -1).map((_, i) => i + 1).filter(i => i % 2) : [];
+    for (const i of each) { const d = child(i); if (d) return d; }
+    return null;
+}
+/** MapLibre's `getMixedFilterMessage` for the legacy filter `f`. */
+function mixedMessage(f: any[]): string {
+    const [op, a] = f, prop = a === '$type' ? ['geometry-type'] : a === '$id' ? ['id'] : ['get', a];
+    if (['<', '<=', '>', '>='].includes(op) && a === '$type') return `"$type" cannot be use with operator "${op}"`;
+    let s: unknown = null;
+    if (['==', '!=', '<', '<=', '>', '>='].includes(op)) { if (f.length === 3 && typeof a === 'string') s = [op, prop, f[2]]; }
+    else if ((op === 'in' || op === '!in') && f.length >= 2 && typeof a === 'string') { const e = ['in', prop, ['literal', f.slice(2)]]; s = op === '!in' ? ['!', e] : e; }
+    else if ((op === 'has' || op === '!has') && f.length === 2 && typeof a === 'string' && a !== '$type' && a !== '$id') { const e = ['has', a]; s = op === '!has' ? ['!', e] : e; }
+    return `Mixing deprecated filter syntax with expression syntax is not supported. ${s ? `Replace ${JSON.stringify(f)} with ${JSON.stringify(s)}.` : `Convert ${JSON.stringify(f)} to expression syntax.`}`;
 }
 /** MapLibre's `validateNonExpressionFilter`. */
 function legacyFilter(where: string, f: any, found: (where: string, why: string) => void) {
