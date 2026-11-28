@@ -726,6 +726,96 @@ for (const mode of renderers) {
             check(`[${mode}] ${second} during a drag, released while it runs, fires dragend and moveend and then the rest of the ease with no second movestart, as in MapLibre GL JS (#2469)`,
                 earlyOurs === earlyMl && earlyMl === '|call movestart zoomstart |ret move zoom dragend moveend move zoom zoomend moveend', JSON.stringify({earlyOurs, earlyMl}));
         }
+        // During a gesture, stop() ends the gesture, and jumpTo() or a second easeTo() ends the ease that runs, as in MapLibre
+        // GL JS (#2529). A pinch fires drag events only when its center moves, and the end of an ease during it does not end
+        // its zoom (#2530). Each case ends with the map at rest and `idle`. (The gesture is held by real input: a mouse, and
+        // two fingers of CDP touch.)
+        {
+            const cdp = await page.context().newCDPSession(page);
+            const setup = lib => page.evaluate(async ([lib, renderer]) => {
+                const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+                if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+                const m = window.gestureMap = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+                await new Promise(r => m.once('load', r));
+                const log = window.gestureLog = [];
+                for (const t of ['movestart', 'zoomstart', 'rotatestart', 'dragstart', 'drag', 'dragend', 'move', 'zoom', 'zoomend', 'rotateend', 'moveend', 'idle']) m.on(t, () => { if (log.at(-1) !== t || !['move', 'zoom', 'drag'].includes(t)) log.push(t); });
+            }, [lib, mode]);
+            const mark = s => page.evaluate(s => window.gestureLog.push(s), s);
+            const call = (s, f) => page.evaluate(([s, f]) => { window.gestureLog.push('|' + s); new Function('m', f)(window.gestureMap); window.gestureLog.push('|ret'); }, [s, f]);
+            // Waits until the log after the last mark `from` has `n` events `type`.
+            const until = (type, n = 1, from = '|ret') => page.waitForFunction(([type, n, from]) => { const l = window.gestureLog; return l.slice(l.lastIndexOf(from)).filter(t => t === type).length >= n; }, [type, n, from], {timeout: 8000, polling: 20}).catch(() => {});
+            const frames = n => page.evaluate(n => new Promise(r => { const f = () => --n ? requestAnimationFrame(f) : r(); requestAnimationFrame(f); }), n);
+            // After the release: the map at rest, then `idle` after a repaint. A run of `move zoom` or `move drag` counts
+            // once, because the number of frames differs between runs and libraries; `drag` stays in the log. Only the order
+            // of `move` and `zoomstart` at the start of a pinch is not compared (it differs for another cause, #2601).
+            const done = async () => {
+                await page.waitForFunction(() => { const m = window.gestureMap, l = window.gestureLog; if (m.isMoving() || l.length !== window.gestureSeen) { window.gestureSeen = l.length; window.gestureQuiet = performance.now(); } return performance.now() - window.gestureQuiet > 300; }, null, {timeout: 8000, polling: 20}).catch(() => {});
+                await page.evaluate(() => { window.gestureLog.push('|rest'); window.gestureMap.triggerRepaint(); });
+                await until('idle', 1, '|rest');
+                return page.evaluate(() => {
+                    const m = window.gestureMap, l = window.gestureLog, rest = [m.isMoving(), m.isZooming(), m.isRotating()].some(Boolean) ? ' NOT AT REST' : '';
+                    const idle = l.slice(l.indexOf('|rest')).includes('idle') ? ' idle' : ' NO IDLE';
+                    const out = l.slice(l.indexOf('|a'), l.indexOf('|rest')).filter(t => t !== 'idle').join(' ');
+                    m.getContainer().remove(); m.remove();
+                    return out.replace('movestart move zoomstart zoom', 'movestart zoomstart move zoom').replace(/\b(move( drag)? zoom( drag)?|move drag)( \1)*\b/g, '$1') + idle + rest;
+                });
+            };
+            const press = async () => {
+                await page.mouse.move(100, 100); await page.mouse.down();
+                for (let i = 1; i < 8; i++) { await page.mouse.move(100 + i * 8, 100); await frames(1); }
+            };
+            const mouse = async (lib, second, ease = true) => {
+                await setup(lib);
+                await press();
+                await frames(10);
+                if (ease) { await call('a', 'm.easeTo({center: [30, 55], zoom: 6, duration: 3000})'); await until('zoom'); }
+                else await mark('|a');
+                await call('b', second);
+                if (second.startsWith('m.easeTo')) await until('moveend'); else await frames(10);
+                await mark('|up'); await page.mouse.up();
+                // (The `drag` events of the mouse are not what this compares: the worker renderer fires one with a later report.)
+                return (await done()).replace(/ drag\b/g, '');
+            };
+            const fingers = (d, x = 0) => [{x: 200 - d + x, y: 200, id: 1}, {x: 200 + d + x, y: 200, id: 2}];
+            const pinch = async (lib, {ease, stop, pan, release, then} = {}) => {
+                await setup(lib);
+                await mark('|a');
+                await cdp.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: fingers(40)});
+                for (let i = 1; i <= 10; i++) { await cdp.send('Input.dispatchTouchEvent', {type: 'touchMove', touchPoints: fingers(40 + i * 5, pan ? i * 4 : 0)}); await frames(1); }
+                await until('zoom', 1, '|a');
+                // (The fingers rest before the next step, so that the release has no zoom inertia and the reports of the
+                // worker renderer have caught up.)
+                await frames(30);
+                if (ease) { await call('b', `m.easeTo({center: [12, 46], duration: ${release ? 2000 : 300}})`); await (release || stop ? until('move') : until('moveend')); }
+                if (stop) await call('s', 'm.stop()');
+                await mark('|up'); await cdp.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []});
+                if (!then) return done();
+                // (The release of MapLibre GL JS also ends the ease, and this library lets it run: only the drag after it is compared.)
+                await until('moveend', 2, '|up'); await mark('|then'); await press(); await mark('|up'); await page.mouse.up();
+                const out = await done();
+                // (On the worker renderer the last report of the drag can come after `dragend`, with a `move`, also on a drag alone.)
+                return out.slice(out.indexOf('|then')).replace('dragend move moveend', 'dragend moveend');
+            };
+            const cases = [
+                ['stop() during an ease in a drag', l => mouse(l, 'm.stop()')],
+                ['stop() during a drag', l => mouse(l, 'm.stop()', false)],
+                ['jumpTo() during an ease in a drag', l => mouse(l, 'm.jumpTo({center: [0, 0]})')],
+                ['a second easeTo() during an ease in a drag', l => mouse(l, 'm.easeTo({center: [40, 50], duration: 500})')],
+                ['a pinch whose center stays', l => pinch(l), log => !/\bdrag/.test(log)],
+                // (This library tests the center once a frame, after both fingers moved: where `dragstart` and `drag` fall among
+                // `move` and `zoom` differs, so the comparison leaves them out and the test asks for them in each log.)
+                ['a pinch whose center moves', l => pinch(l, {pan: true}), log => /dragstart .*drag .*dragend/.test(log), log => log.replace(/ drag(start)?\b/g, '').replace(/\b(move zoom)( move zoom)*\b/g, '$1')],
+                ['an easeTo() during a pinch', l => pinch(l, {ease: true})],
+                ['stop() during a pinch', l => pinch(l, {stop: true})],
+                ['stop() during an easeTo() in a pinch', l => pinch(l, {ease: true, stop: true})],
+                ['a pinch released during its easeTo(), then a drag', l => pinch(l, {ease: true, release: true, then: true})],
+            ];
+            for (const [name, run, also = () => true, same = log => log] of cases) {
+                const ours = await run('ours').catch(e => String(e)), ml = await run('ml').catch(e => String(e));
+                check(`[${mode}] ${name} fires the events of MapLibre GL JS and ends at rest with idle (#2529, #2530)`, same(ours) === same(ml) && also(ours) && also(ml) && !ml.includes('NOT AT REST') && ml.endsWith(' idle'), JSON.stringify({ours, ml}));
+            }
+        }
         // resize() fires movestart, move, resize and moveend inside the call, also for an unchanged size, and the observer of
         // the container fires them once more after a change of the size, as in MapLibre GL JS (#2395).
         const resizeOrder = lib => page.evaluate(async ([lib, renderer]) => {

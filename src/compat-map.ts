@@ -815,7 +815,8 @@ export class Map extends CoreMap {
         // its end events, unless it is a gesture. A jump of easeTo or flyTo (with no duration) fires the start events of
         // zoom, rotate and pitch before `move`, as a movement of MapLibre GL JS does; jumpTo fires each one after `move`.
         const ease = this.nested, data = ease ? this.moveData : eventData, cam = () => [this.tr.lng, this.tr.lat, this.tr.zoom, this.tr.bearing, this.tr.pitch], was = cam(), parts = ['start', '', 'end'];
-        if (!this.gesturing?.()) this.halt();
+        // (During a gesture, an ease ends and the gesture goes on, as in MapLibre GL JS, #2529.)
+        if (!this.gesturing?.()) this.halt(); else this.endEase();
         this.camera(eventData, () => super.jumpTo(this.snapped(o)));
         const now = this.hushedAt = cam(), axes = ['zoom', 'rotate', 'pitch'].filter((_, i) => was[i + 2] !== now[i + 2]);
         // (A later report compares its camera with the camera of the jump, which the page has.)
@@ -825,15 +826,14 @@ export class Map extends CoreMap {
         return this;
     }
     /**
-     * As in MapLibre GL JS, a movement that runs ends during the call, with its end events and no `move`. A
-     * gesture is not stopped here, as with `jumpTo`. The reports of the engine up to this command fire no events.
+     * As in MapLibre GL JS, a movement that runs ends during the call, with its end events and no `move`, and a gesture
+     * ends too: an ease during it fires its end events, then `dragend` fires. The reports of the engine up to
+     * this command fire no events.
      */
     override stop() {
         super.stop();
-        if (!this.gesturing?.()) {
-            this.hushed = this.jumped; this.seen = undefined; this.hushedAt = [this.tr.lng, this.tr.lat, this.tr.zoom, this.tr.bearing, this.tr.pitch];
-            this.halt();
-        }
+        this.hushed = this.jumped; this.seen = undefined; this.hushedAt = [this.tr.lng, this.tr.lat, this.tr.zoom, this.tr.bearing, this.tr.pitch];
+        if (this.gesturing?.()) this.endGesture(); else this.halt();
         return this;
     }
     /** The command of the last jump and its camera: the engine's reports up to that command, or with that camera after
