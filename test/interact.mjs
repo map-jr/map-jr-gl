@@ -667,10 +667,10 @@ for (const mode of renderers) {
             await new Promise(r => setTimeout(r, 200));
             log.push('|call'); m[second]({center: [30, 55], zoom: 6, duration: early ? 3000 : 300}); log.push('|ret');
             // (`early`: the pointer lifts while the ease still runs.)
-            // (It waits for the first `move` of the ease, not for a time: the report of the engine can come late. When the ease
+            // (It waits for the first `zoom` of the ease, not for a time: the report of the engine can come late. When the ease
             // has ended by then, the attempt is void and the caller tries again.)
             if (early) {
-                for (let i = 0; i < 200 && !log.slice(log.indexOf('|call')).includes('move'); i++) await new Promise(r => setTimeout(r, 25));
+                for (let i = 0; i < 200 && !log.slice(log.indexOf('|call')).includes('zoom'); i++) await new Promise(r => setTimeout(r, 25));
                 if (log.slice(log.indexOf('|call')).includes('moveend')) { m.remove(); el.remove(); return 'RETRY'; }
             } else for (let i = 0; i < 100 && !log.slice(log.indexOf('|call')).includes('moveend'); i++) await new Promise(r => setTimeout(r, 50));
             await new Promise(r => setTimeout(r, 100));
@@ -678,7 +678,8 @@ for (const mode of renderers) {
             if (early) for (let i = 0; i < 200 && log.slice(log.indexOf('|call')).filter(t => t === 'moveend').length < 2; i++) await new Promise(r => setTimeout(r, 25));
             else await new Promise(r => setTimeout(r, 600));
             m.remove(); el.remove();
-            return log.slice(log.indexOf('|call')).join(' ');
+            // (The number of frames differs between runs: a run of `move zoom` counts once.)
+            return log.slice(log.indexOf('|call')).join(' ').replace(/(move zoom)( move zoom)*/g, '$1');
         }, [lib, mode, second, early]).catch(e => String(e));
         for (const second of ['easeTo', 'flyTo']) {
             const ours = await dragEase('ours', second), ml = await dragEase('ml', second);
