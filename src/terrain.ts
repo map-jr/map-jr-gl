@@ -78,7 +78,7 @@ export function groundSources(this: any, id: TileID, zt: number, stamp: string) 
     view.lng = lngFromMerc((id.x + 0.5) / n); view.lat = latFromMerc((id.y + 0.5) / n); view.zoom = zt;
     const cover = new Transform();
     Object.assign(cover, {lng: view.lng, lat: view.lat});
-    const items = new Map<string, RenderItem<GLTile>[]>();
+    const items = new Map<string, RenderItem<GLTile>[]>(), around = new Map<string, RenderItem<GLTile>[]>();
     let complete = true;
     let signature = `${zt}|${this.styleVersion}`;
     for (const source in this.style.sources) {
@@ -93,27 +93,45 @@ export function groundSources(this: any, id: TileID, zt: number, stamp: string) 
         // (A little less than the tile: a view that ends exactly on the tile's edge would take the tiles beyond it too.)
         cover.width = cover.height = TILE_SIZE - 2;
         const ideal = image ? this.viewCover(source).filter((t: TileID) => touches(t, id)) : cover.tileCover(src.minzoom, src.maxzoom, src.tileSize);
-        for (const t of ideal) {
+        // A layer with fill-translate or line-translate also moves the parts of the neighbor tiles into this picture, so
+        // those tiles are drawn into it too (see `translated` in drawLayers). Otherwise a moved shape ends at the edge of
+        // the ground tile, and on the globe, whose tiles keep nothing past their edges, it has gaps (#2013).
+        cover.width = cover.height = 3 * TILE_SIZE - 2;
+        const wide = !image && this.layers.some((l: CompiledLayer) => l.source === source && moves(l, zt)) ? cover.tileCover(src.minzoom, src.maxzoom, src.tileSize) : [];
+        for (const t of wide.length ? wide : ideal) {
             const key = source + '|' + t.key, have = this.tiles.get(key);
             keys.push(key);
             if (!have) this.request(source, t, key);
             else this.refresh(source, t, key, have);
             if (this.tiles.get(key)?.state === 'loading') complete = false;
         }
-        const list = renderItems(view, ideal, k => {
+        const get = (k: string) => {
             const key = source + '|' + k, t = this.tiles.get(key);
             if (t?.state !== 'ok' || t.missing) return undefined;
             keys.push(key); // a stand-in tile of another level: it is in use too
             return t.gl;
-        });
+        };
+        const list = renderItems(view, ideal, get);
         items.set(source, list);
         // The picture depends on exactly these tiles (and which build of each), so that is what identifies it.
         for (const it of list) signature += `,${it.id.key}:${it.tile.uid}`;
+        if (!wide.length) continue;
+        const all = renderItems(view, wide, get);
+        around.set(source, all);
+        signature += '|';
+        for (const it of all) signature += `,${it.id.key}:${it.tile.uid}`;
     }
     // (A tile that waits to be requested, as contour tiles do while the zoom changes, is not there yet: the picture is not complete.)
     let revs = 0;
     for (const k of keys) { const t = this.tiles.get(k); if (t) { t.used = this.frameNo; revs += t.rev!; } else { revs = NaN; complete = false; } }
-    return {stamp, view, items, signature, complete, keys, revs, version: this.tilesVersion};
+    return {stamp, view, items, around, signature, complete, keys, revs, version: this.tilesVersion};
+}
+
+/** Whether a layer of the ground is moved by fill-translate or line-translate at the zoom of the pictures. */
+function moves(l: CompiledLayer, zt: number) {
+    if ((l.type !== 'fill' && l.type !== 'line') || !l.visible || zt < l.minzoom || zt >= l.maxzoom) return false;
+    const t = l.p.translate.eval(zt);
+    return Array.isArray(t) && (!!t[0] || !!t[1]);
 }
 
 /** 3D terrain: the ground tiles in view, each with a straight-down view of itself for drawing its picture. */
@@ -126,6 +144,11 @@ export function terrainTiles(this: any, wanted: Set<string>): TerrainTile[] {
     for (const [k, m] of this.meshHeights) if (this.frameNo - m.used > 120) this.meshHeights.delete(k);
     for (const [k, m] of this.groundCache) if (this.frameNo - (m.used ?? 0) > 120) this.groundCache.delete(k);
     const viewLit = this.layers.some((l: CompiledLayer) => l.type === 'hillshade' && l.visible && l.p.anchor.eval(tr.zoom) === 'viewport');
+    // A picture with fill-translate or line-translate is moved by pixels of the map at its zoom, and with the anchor
+    // viewport also turned by its bearing: it is drawn again for a new zoom or bearing when the map is still (as the
+    // lit relief is, see updateDrapes), as MapLibre GL JS draws its pictures again for a new zoom.
+    const zt0 = Math.floor(tr.zoom) + 0.75, moved = this.layers.filter((l: CompiledLayer) => moves(l, zt0));
+    const shift = moved.length ? `${tr.zoom}|${moved.some((l: CompiledLayer) => l.p.translateAnchor.eval(zt0) === 'viewport') ? tr.bearing : ''}` : '';
     for (const id of tr.tileCover(0, 22, TILE_SIZE).slice(0, 96)) { // nearest first; a cap keeps odd views affordable
         // Each tile's picture is drawn once for a whole level of zoom: with the style as it is three quarters of the way
         // through the level of the map, and stretched as the map zooms inside that level. A ground tile can be of a
@@ -149,7 +172,7 @@ export function terrainTiles(this: any, wanted: Set<string>): TerrainTile[] {
         made.used = this.frameNo;
         for (const k of made.keys) wanted.add(k);
         if (!made.complete) this.groundWaits = true;
-        const {view, items, signature, complete} = made;
+        const {view, items, around, signature, complete} = made;
         // The heights themselves: make sure the elevation tiles for this ground tile are on their way. They are the
         // tiles that the view selects for the source, which are also the ones that relief shading of the same source
         // draws: the two then load one set of tiles, also when the relief layer is added after the terrain. Where the
@@ -190,7 +213,7 @@ export function terrainTiles(this: any, wanted: Set<string>): TerrainTile[] {
         mesh.used = this.frameNo;
         // Relief shading that is lit from the viewer's side turns with the map: the picture is drawn again when the
         // map has turned a dozen degrees (the renderer waits until the map is still, see updateDrapes).
-        out.push({id, key: tkey, matrix: tr.tileMatrix4(id), view, items, signature, light: viewLit ? Math.round(tr.bearing / 12) : 0, complete, dem: this.demRef(id), heights: mesh.data, heightsVersion: mesh.version});
+        out.push({id, key: tkey, matrix: tr.tileMatrix4(id), view, items, signature, light: viewLit ? Math.round(tr.bearing / 12) : 0, around, shift: around.size ? shift : '', complete, dem: this.demRef(id), heights: mesh.data, heightsVersion: mesh.version});
     }
     return out;
 }
@@ -275,8 +298,8 @@ export function updateDrapes(this: any, s: Scene) {
         // GPU, which is what limits a zoom on a phone. It is made again at the full size when the camera is still.
         // A picture is also made again when the light in it is out of date. That waits until the camera is still: while
         // the map turns, each step of the light would make every picture again, which phones cannot keep up with.
-        const sharpen = !!d && !s.moving && (!!d.rough || d.light !== t.light);
-        if (d && (d.rough || d.light !== t.light) && s.moving) behind = true; // more frames must come, to make this picture sharp after the movement
+        const sharpen = !!d && !s.moving && (!!d.rough || d.light !== t.light || d.shift !== t.shift);
+        if (d && (d.rough || d.light !== t.light || d.shift !== t.shift) && s.moving) behind = true; // more frames must come, to make this picture sharp after the movement
         if (d && d.signature === t.signature && !sharpen) { d.used = this.frame; continue; }
         // A picture whose data is not complete is made again as more of its data arrives, but at most two times in a
         // second: the ground fills in step by step (the map, then the relief, then the contour lines), and a tile
@@ -310,13 +333,15 @@ export function updateDrapes(this: any, s: Scene) {
             this.drapes.set(t.key, d);
         }
         d.rough = rough;
-        d.signature = t.signature; d.light = t.light; d.used = this.frame; d.at = now;
+        d.signature = t.signature; d.light = t.light; d.shift = t.shift; d.used = this.frame; d.at = now;
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, d.tex, 0);
         gl.viewport(0, 0, size, size);
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
+        this.around = t.around;
         this.drawLayers(s, t.view, t.items, [size, size], 'ground');
+        this.around = undefined;
         gl.bindTexture(gl.TEXTURE_2D, d.tex);
         gl.generateMipmap(gl.TEXTURE_2D);
     }
