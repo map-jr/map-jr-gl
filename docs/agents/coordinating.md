@@ -227,18 +227,24 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   the reset, send each one what changed on `main`; do not start new workers for the same issues.
 - **A restart of the cloud container can lose hours and the results of running workers.** On 2026-11-26 a restart
   stopped the session for about seven hours; the report of one worker was only in its output file. After a restart,
-  read the output file of each task that the restart notice names, start the CI watch again, and update each open
-  pull request from `main` (`gh api -X PUT repos/map-jr/map-jr-gl/pulls/N/update-branch`) before you merge it,
-  because its CI ran on an old base.
+  read the output file of each task that the restart notice names, and start the CI watch again. The merge queue
+  tests each pull request on the current `main`, so an old base needs no update.
 - **Measure the bytes of a branch on its merge with `main`, not on the branch alone.** A branch that is behind `main`
   compares with an older base: on 2026-11-26 a reviewer measured +15 bytes for #2178, and its merge with `main` gave
   +404. Build the result of `git merge` of the branch into `origin/main` in a temporary worktree.
 
 ## Merging
 
-- **Merge when `checks`, the four `browser-*` jobs and `render` have passed** (see `CLAUDE.md`). Do not wait for the
-  summary job `browser`: on 2026-11-24 it ran for about 6 s and waited for a runner 10.7 min (median of 15 runs,
-  #1602). A browser job that the job `changes` skipped counts as passed.
+- **Merge through the merge queue of `main`** (since 2026-11-28, #2579). The ruleset `main` has a queue that takes
+  groups of 1 to 4 pull requests, builds 2 groups at once, waits 5 minutes to fill a group, times out after 60 minutes
+  and merges with squash. The queue runs `CI` on `main` with the pull requests ahead of it, and merges a group when
+  `checks`, `browser` and `render` pass on it.
+- **To merge, turn on auto-merge** once the worker's last push is in and you have read the source diff at that head
+  (the tool `enable_pr_auto_merge` of the GitHub MCP server; `gh` cannot, because GraphQL is blocked in a cloud
+  session). The pull request enters the queue when its own checks pass. The answer names the method "merge", but the
+  queue squashes: #2598 landed on 2026-11-28 as 602e4d5 with one parent.
+- **Turn auto-merge off before you send a pull request back** (`disable_pr_auto_merge`), so that a new push does not
+  merge before you have read it, and turn it on again for the new head.
 - **Keep about eight pull requests in CI at once, over all coordinators.** The account ran at most 27 jobs at the same time on 2026-11-24, and
   a pull request that changes `src/` uses about 40 runner-minutes, so 25 open pull requests made each job wait up to
   30 minutes. Start new workers as pull requests merge, not all at once.
@@ -249,38 +255,12 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   2026-11-17 a rebased branch of #801 carried old copies of lines of #802 and #803, and would have undone both. A
   three-dot diff of a branch that started before a merge can also show lines that the merge keeps; the merge tree
   decides.
-- **Update a branch whose CI ran before a merge that adds checks.** A clean merge tree only says that the lines do not
-  conflict. On 2026-11-26 #2240 added a message while its CI ran on a base without #2229, which made the build replace
-  each message with its code and stop on a value without a name. `main` was red after the merge, in the build, in
-  `docs/reference/messages.md` and in a check of `test/interact.mjs` (fixed in #2247).
-
-  When `main` has had a merge since the CI of a branch ran, and that merge changed one of the following, update the
-  branch (`gh api -X PUT repos/map-jr/map-jr-gl/pulls/<n>/update-branch`) and merge on the new CI:
-  - the build, or a script that the build or a check of the branch runs (`build.mjs`, and the scripts of `pnpm build`,
-    `pnpm test` and `pnpm test:consistency`, such as `scripts/messages.mjs` and `scripts/size-check.mjs`);
-  - the harness of a suite (its helpers, `demo/serve.mjs`, its start or its options), or a check that the branch also
-    changes;
-  - the same function of `src/` as the branch, or lines near its change (read the hunks of both and
-    `git merge-tree`).
-
-  When the merge changed only the messages, the description, the reference, or another function of a file of `src/`
-  that the branch also changes, test the merge tree instead of updating the branch. Merge the branch into
-  `origin/main` in a temporary worktree, and run `pnpm build`, `pnpm test:unit` and `pnpm test:consistency` on it
-  before you merge. Update the branch when one of them fails. This is the update rule of both lanes coordinators (the
-  owner, 2026-11-27, #2255).
-
-  The full rule restarted the CI of other branches too often. On 2026-11-27, a series of ten open pull requests
-  restarted five runs of about 25 minutes after each merge of `src/map.ts` or `src/host.ts`.
-
-  A merge that only adds or changes a check of another feature in `test/interact.mjs` or `test/host.mjs` needs no
-  update (the owner, 2026-11-26, #2301). Before this decision, each such merge restarted the CI of every open branch.
-  From 21:35 to 23:10 UTC on 2026-11-26, five merges of one coordinator restarted the four runs of another
-  coordinator five times each.
-
-  A merge that only changes a script that no check of the branch runs needs no update either: the tools of
-  `scripts/agents/` and the reports (`scripts/status.mjs`, `scripts/timeline.mjs`). The same holds for
-  `scripts/ci-paths.mjs` when the branch changes `src/`, because every job of `CI` runs then, and its `--check` in
-  `pnpm test:consistency` reads only the files that the browser jobs read (the owner, 2026-11-27, #2360).
+- **Do not update a branch for a merge on `main`.** The queue tests each pull request on the result of the merge, so
+  a branch whose CI ran on an older base needs no new run. This replaces the update rule of 2026-11-27 (#2255) and the
+  pause of merges after a series: from 21:35 to 23:10 UTC on 2026-11-26 five merges restarted the four runs of
+  another coordinator five times each, and on 2026-11-27 ten runs of `CI` on `main` in a row were canceled.
+  Update a branch only when it conflicts with `main` (`mergeable_state` is `dirty`), with
+  `node scripts/agents/merge-main.mjs`.
 - **A green CI of the pull request is weak evidence for a fix of timing.** #745 passed its CI and then failed on
   `main` in both attempts. Before you merge such a fix, run the job of its check two more times
   (`gh run rerun <run> --job <job>`) and read that each attempt passed without the retry of the suite. A fix of a
@@ -288,13 +268,14 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   local runs and CI still found the race.
 - **`Fixes #N` closes the issue at the merge, also when a part is left.** After each merge, check the state of the
   issue, and reopen it with a body that says what is left (#532, #555 and #637 on 2026-11-17).
-- **Merge one pull request in each command.** A loop that merged two pull requests in one command was refused by the
-  permission check of auto mode.
+- **Turn on auto-merge for one pull request in each command.** A loop that merged two pull requests in one command
+  was refused by the permission check of auto mode.
 - **A step that fails on the network is not a fault of a check.** `read ECONNRESET` in a step that fetches a file
   (`scripts/site.mjs`, #805) needs one more run of the job, and an issue if the fetch has no retry.
 - **CI must be green on the current `main`.** Pull requests that pass alone can fail together (three of them once put
-  a page script 19 bytes over its budget). When two open pull requests change the same function, or a budget is
-  near, merge one, update the other (`gh pr update-branch N`), and wait for its CI.
+  a page script 19 bytes over its budget). The queue tests them together in its groups; a group that fails is taken
+  apart, and the pull request that fails alone leaves the queue. Read the job of a group that failed before you send
+  its pull request back.
 - **A merge can break another branch with no conflict.** After a merge that renames or removes something, send each
   open branch to its worker to merge `main` and search for the old name, and do not merge on a CI result older than
   that merge. (A check of one branch still read a member that #526 had made private.)
@@ -318,8 +299,8 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   jobs of `CI` are queued (#2083 on 2026-11-25). Before a merge, list the checks of the head
   (`gh api repos/map-jr/map-jr-gl/commits/<sha>/check-runs -q '.check_runs[] | "\(.name)=\(.conclusion)"'`) and see
   `checks`, the four `browser-*` jobs and `render` among them.
-- **A run of merges cancels CI on `main`,** because each push cancels the run before it. After several merges, let
-  one run on `main` finish before you merge more, and before a change that alters how every map starts.
+- **A run of merges cancels CI on `main`,** because each push cancels the run before it. The run of the merge group
+  is the evidence for a commit of the queue, so no pause is needed between merges.
 - **The `Browsers` workflow keeps one waiting run for each group,** and a newer run in the group replaces the waiting
   one. Pushes to `main` and starts by hand with `safari` share one group, because they write `bench-results`. A start
   by hand with `safari_only` has a group of its own (#1929), so merges go on while it runs, and no hold is needed.
@@ -341,6 +322,9 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
 - **The brief of a reviewer that may fix docs names the limit of docs-lint** (a paragraph has at most 90 words): two
   docs commits of reviewers failed `checks` on 2026-11-25 (#2083). Tell a reviewer to run `pnpm test:consistency`
   before it pushes.
+- **Tell each reviewer and each triage worker to set up first** (`pnpm install --frozen-lockfile && node build.mjs` in
+  its worktree). Three triage workers and a reviewer of #2600 on 2026-11-28 had no `node_modules` and no `dist/`, so
+  they could only read, and every finding came back unverified.
 - **Tell each reviewer to stop its demo server by its process id only.** A reviewer of 2026-11-25 stopped its server
   by matching `demo/serve.mjs`, which would also have stopped the servers of other worktrees.
 - **Let the reviewer fix what it found** when the author is past about 140,000 tokens, and ask it first to run each
@@ -439,7 +423,8 @@ alone cannot.
     (the issues endpoint also lists pull requests).
   - Search: `gh api -X GET search/issues -f q='repo:map-jr/map-jr-gl is:issue <words>'`. The query needs `is:issue` or
     `is:pull-request`, or the answer is HTTP 422.
-  - Merge: `gh api -X PUT repos/map-jr/map-jr-gl/pulls/N/merge -f merge_method=squash -f sha=<head>`.
+  - Merge: turn on auto-merge with the tool `enable_pr_auto_merge` of the GitHub MCP server (see "Merging"); the queue
+    merges.
   - Re-run one job: `gh api -X POST repos/map-jr/map-jr-gl/actions/jobs/ID/rerun`.
 - `gh pr edit` and `gh issue view --comments` fail on this repository with an error about Projects (classic). Use
   `gh api -X PATCH repos/map-jr/map-jr-gl/pulls/N -F body=@file` and `gh issue view N --json body,comments`.
@@ -455,7 +440,6 @@ alone cannot.
   the option `gh` writes nothing, and the log of a run that is still in progress is not there yet. The `gh` of the
   cloud VM (2.89) does not know the option and writes the log without it:
   `gh api repos/map-jr/map-jr-gl/actions/jobs/<id>/logs > file`.
-- `gh api -X PUT …/pulls/N/merge -f sha=` needs the full SHA of 40 characters.
 - A dispatch of the workflow `Browsers` with `safari` (not `safari_only`) replaces a push run of it that waits, a push
   run of a merge included. A dispatch with `safari_only` does not (#1929).
 - A branch that is checked out in the worktree of a worker that has ended is pushed from another worktree with
