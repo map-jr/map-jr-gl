@@ -71,6 +71,36 @@ subagent that still runs when the session ends is lost, with its report.
 - **The successor checks the state itself.** It lists the open pull requests (`node scripts/agents/prs.mjs`) and reads
   the coordination issue, and it does not take a number of the handoff as measured.
 
+## The hourly dispatcher
+
+A scheduled task opens a fresh coordinator session each hour (#2580, approved by the owner on 2026-11-28). The
+session does one round and stops. It keeps no state of its own: the pull requests, the issues and the coordination
+issue (#2255) carry it from one round to the next. The lanes coordinators of "Several coordinators" stay until the
+dispatcher has run for one day.
+
+Each round does these steps in order:
+
+1. Run `node scripts/agents/dispatch.mjs` (`--json` gives the same plan as JSON, `--help` the options). It lists each
+   open pull request with its CI state, auto-merge, `mergeable_state`, changed files and action; the cluster issues
+   that are ready, oldest first, with how many may start now; and the "Found" lines of the pull requests merged in the
+   last day that have no issue yet.
+2. For each pull request marked "read the diff and turn on auto-merge", read the source diff at its head (see
+   "Merging") and turn on auto-merge for that head, one pull request in each command.
+3. For each pull request marked "send the failure to its author", read the failed job and send it to the session or
+   worker that opened the pull request. For one marked "merge main", ask the same session to run
+   `node scripts/agents/merge-main.mjs`.
+4. Start one worker for each ready cluster, up to the count that may start now, with the prompt of "The prompt of a
+   worker". A worker is a cloud session or a subagent of the type `worker` (Opus for a cluster). The worker writes its
+   report into the body of its pull request under "Found" and the other lines of the brief, and stops.
+5. File each "Found" line that the script lists, after a search of its own (see "Issues" in `CLAUDE.md`).
+6. Update the row "Dispatcher" of #2255: the time of the round, the workers that it started and the pull requests
+   that it put into the queue. A round that changed nothing does not write to #2255.
+
+The session then stops. It does not wait for CI or for a worker: the next round reads their results.
+A cluster is ready when no open pull request names it and no open pull request changes a file of its `**Where:**`;
+the share of CI is the number of pull requests in CI that #2255 gives (eight when it gives none), minus the open pull
+requests.
+
 ## Before a batch
 
 - **Triage first.** An issue can be older than `main`. A read-only triage worker checks the issues for about 7,000
