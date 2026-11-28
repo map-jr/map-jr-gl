@@ -55,6 +55,35 @@ for (const renderer of renderers) {
         }, renderer);
         check(`[${renderer}] createMap: the map loads, and the state says so`, !start.before && start.loaded && (start.renderer === renderer || (renderer === 'worker' && start.renderer === 'main' /* a browser that cannot draw in a worker */)) && start.zoom === 14.3 && start.seen.includes('loaded:true') && start.seen.indexOf('load:idle=false') >= 0 && start.seen.indexOf('load:idle=false') < start.seen.indexOf('idle') && start.canvas, JSON.stringify(start));
 
+        // 1-. A map that moves from the worker to the main thread after `load` says so in `renderer` (#1840). The page
+        // drops the questions of the watchdog (`ping`) after the first, so the engine in the worker misses them and the
+        // map moves about 5 s after its start, after `load` unless the map loads later.
+        if (renderer === 'worker') {
+            const moved = await (async () => {
+                const p = await browser.newPage({viewport: {width: 600, height: 400}});
+                try {
+                    await p.goto(`${origin}/bench`);
+                    return await p.evaluate(async () => {
+                        const lib = await import('/dist/map-jr-gl.dev.js'), style = await (await fetch('/style.json')).json();
+                        // (The page /bench wraps `Worker`: each new worker gets its own `postMessage`.)
+                        const Real = Worker;
+                        window.Worker = function (...a) { const w = new Real(...a), post = w.postMessage.bind(w); w.postMessage = (m, ...rest) => m && m.type === 'ping' && m.n > 1 ? undefined : post(m, ...rest); return w; };
+                        const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0'}));
+                        const host = lib.createMap(el, {style, initialView: {center: [-74.0065, 40.7085], zoom: 14}, renderer: 'worker', attribution: false});
+                        await new Promise(r => host.state.subscribe(s => s.loaded, l => l && r()));
+                        const atLoad = host.state.get().renderer, seen = [];
+                        host.state.subscribe(s => s.renderer, r => seen.push(r));
+                        const until = Date.now() + 20000;
+                        while (host.state.get().renderer !== 'main' && Date.now() < until) await new Promise(r => setTimeout(r, 200));
+                        const out = {atLoad, now: host.state.get().renderer, seen};
+                        host.destroy();
+                        return out;
+                    });
+                } finally { await p.close(); }
+            })();
+            check(`[${renderer}] state.renderer becomes 'main' when the map moves to the main thread after load`, moved.atLoad !== 'worker' || (moved.now === 'main' && moved.seen.join() === 'main'), JSON.stringify(moved));
+        }
+
         // 1a. The first view is reported once, after createMap returns, and giving it back to `view` moves nothing (#1135).
         const first = await page.evaluate(async () => {
             const t = window.t, wait = ms => new Promise(r => setTimeout(r, ms)), moves = [];

@@ -6,7 +6,7 @@
   `mapProps` are the props of the map, and a new `camera` moves the camera: a flight, or a cut when the system asks for
   reduced motion. The map draws the color scheme `scheme`, which the panel sets, and
   the stage has the paper of that scheme behind the map, so that nothing shows through around the globe. `data-map-state` is "idle" when the map is drawn and ready, "error" when it cannot be shown (the SVG
-  stays), and the checks read it. `renderer` is the thread that draws, once the map has loaded.
+  stays), and the checks read it. `renderer` is the thread that draws, once the map has loaded, and again when it changes.
 -->
 <script setup lang="ts">
 import type {MapJrExposed} from '@map-jr/map-jr-gl/vue';
@@ -55,10 +55,15 @@ watch(() => props.camera, move);
 
 // The checks read the map through the element (`__homeMap`) to compare its places with those of the first paint.
 const root = useTemplateRef<HTMLElement & {__homeMap?: unknown}>('root');
+let stopRenderer: (() => void) | undefined;
+onBeforeUnmount(() => stopRenderer?.());
 function onLoad() {
     ready = true;
     if (root.value) root.value.__homeMap = map.value;
     // The map is at its first view already. A flight here would show a half-drawn map under the first paint.
+    // (The renderer can change after `load`, when the map moves to the main thread; #1840.)
+    stopRenderer?.();
+    stopRenderer = map.value?.state.subscribe(s => s.renderer, r => emit('renderer', r ?? ''));
     emit('renderer', map.value?.state.get().renderer ?? '');
     const now = props.camera;
     if (now.center[0] === first.center[0] && now.center[1] === first.center[1] && now.zoom === first.zoom && (now.bearing ?? 0) === (first.bearing ?? 0) && (now.pitch ?? 0) === (first.pitch ?? 0)) return;
