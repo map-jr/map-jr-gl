@@ -21,7 +21,7 @@
 
 ## Needs the owner?
 
-<!-- Yes if this breaks or renames public API, changes a default, changes the hard line of the size or a ceiling, adds a dependency to the
+<!-- Yes if this breaks or renames public API, changes a default, changes the target or the limit of the size or a ceiling, adds a dependency to the
 built files, takes code or a method from a project that is not under a license listed in CLAUDE.md ("Code and
 methods from other projects"), or changes CLAUDE.md, CI or the release process. Otherwise it can
 be merged (squash) when CI is green. -->
