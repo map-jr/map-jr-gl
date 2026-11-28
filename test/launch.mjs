@@ -4,6 +4,9 @@
 import {createRequire} from 'node:module';
 import {existsSync} from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {spawnSync} from 'node:child_process';
 
 const require = createRequire(import.meta.url);
 const browsers = ['chromium', 'firefox', 'webkit'];
@@ -15,12 +18,41 @@ if (process.env.BROWSER && browserName !== process.env.BROWSER) {
 // Where to find Chromium when Playwright's own build is missing (the image of the cloud VM has /opt/pw-browsers/chromium).
 const imageChromium = '/opt/pw-browsers/chromium';
 
+// The folder of the pinned Playwright browsers: the first of PLAYWRIGHT_BROWSERS_PATH and `candidates` that has the
+// Chromium build `revision` (a folder chromium-<revision>), or none, so that Playwright uses what it finds. The
+// cloud VM sets PLAYWRIGHT_BROWSERS_PATH to the image's folder, which has an older build, so the variable alone
+// does not decide.
+export function pinnedBrowsersPath(env, candidates, revision, has = (dir, rev) => existsSync(path.join(dir, `chromium-${rev}`))) {
+    return [env.PLAYWRIGHT_BROWSERS_PATH, ...candidates].find(dir => dir && has(dir, revision));
+}
+
+// The revision of Chromium that the installed Playwright pins.
+export const pinnedRevision = type => type.executablePath().match(/chromium-(\d+)/)?.[1];
+
+// `.cache-pw` of this checkout, or of the main checkout when this one is a git worktree (brief of the workers, step 6).
+export function cachePwCandidates() {
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+    const common = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {cwd: root, encoding: 'utf8'}).stdout?.trim();
+    return [path.join(root, '.cache-pw'), ...(common ? [path.join(path.dirname(common), '.cache-pw')] : [])];
+}
+
+// One line that names the Chromium build in use, and says how to install the pinned one when the image's build is used.
+export function chromiumNote(type, env = process.env) {
+    const file = chromiumOptions(type).executablePath || type.executablePath();
+    if (env.PW_CHROMIUM) return `chromium: ${file} (PW_CHROMIUM)`;
+    if (existsSync(file) && file !== imageChromium) return `chromium: ${file} (pinned build, as CI uses)`;
+    if (file === imageChromium) return `chromium: ${file} (the image's build, not the one CI uses; install the pinned build with: PLAYWRIGHT_BROWSERS_PATH=<checkout>/.cache-pw pnpm exec playwright install chromium)`;
+    return 'chromium: none found; run pnpm exec playwright install chromium';
+}
+
 // The options that every launch of Chromium shares, so that no script has to know where the browser is. `type` is
 // `chromium` of the Playwright that the script uses. The executable is, in this order: the file named by PW_CHROMIUM;
-// none (Playwright's pinned build, which CI installs) when that build exists; the file of the cloud VM image when it
+// the pinned build in PLAYWRIGHT_BROWSERS_PATH or in .cache-pw when it is installed there; none (Playwright's own folder) when the pinned build exists; the file of the cloud VM image when it
 // exists. With none of these Playwright reports its own "Executable doesn't exist" error.
 export function chromiumOptions(type) {
-    const executablePath = process.env.PW_CHROMIUM
+    const revision = pinnedRevision(type), dir = pinnedBrowsersPath(process.env, cachePwCandidates(), revision);
+    const pinned = dir && type.executablePath().replace(/^.*?(?=chromium-\d+[\\/])/, dir + path.sep);
+    const executablePath = process.env.PW_CHROMIUM || pinned
         || (existsSync(type.executablePath()) || !existsSync(imageChromium) ? undefined : imageChromium);
     return executablePath ? {executablePath} : {};
 }

@@ -24,3 +24,12 @@ test('BROWSER=webkit and BROWSER=firefox are kept', () => {
         assert.equal(r.stderr, '');
     }
 });
+
+test('the pinned browsers folder: the first folder with the pinned build, else none', async () => {
+    const {pinnedBrowsersPath} = await import('../launch.mjs');
+    const has = (d: string, rev: string) => d === '/b' && rev === '1255';
+    assert.equal(pinnedBrowsersPath({PLAYWRIGHT_BROWSERS_PATH: '/image'}, ['/a', '/b'], '1255', has), '/b');
+    assert.equal(pinnedBrowsersPath({PLAYWRIGHT_BROWSERS_PATH: '/b'}, ['/a'], '1255', has), '/b');
+    assert.equal(pinnedBrowsersPath({}, ['/a'], '1255', has), undefined);
+    assert.equal(pinnedBrowsersPath({}, ['/b'], '1243', has), undefined);
+});

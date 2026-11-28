@@ -57,7 +57,10 @@ writing); this brief has the steps.
    pinned build is missing, and that build counts some tests differently (`text-local-glyphs/cjk` is a match there
    and near in CI; #1483). Install the pinned build once with
    `PLAYWRIGHT_BROWSERS_PATH=/home/user/map-jr-gl/.cache-pw pnpm exec playwright install chromium` (about a minute),
-   and set the same `PLAYWRIGHT_BROWSERS_PATH` for every run. A full run writes the two result files only on the
+   and set the same `PLAYWRIGHT_BROWSERS_PATH` for every run. `scripts/agents/suite.mjs` and `test/launch.mjs` use the
+   build in `.cache-pw` of the checkout (or of the main checkout from a worktree) when it is installed and
+   `PLAYWRIGHT_BROWSERS_PATH` is not set, and `suite.mjs` prints a line `chromium: <file> (…)` that says which build
+   runs and, for the image's build, how to install the pinned one. They download nothing. A full run writes the two result files only on the
    pinned build. Do not run the other conformance tools (example pages, plugins, styles) unless your prompt
    asks.
 7. Commit, `git push -u origin <branch>`, and open a pull request against `main`
