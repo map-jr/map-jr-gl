@@ -2,7 +2,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 // @ts-expect-error (a plain module of the agent tools, without types)
-import {parseCluster, foundLines, foundTitle, readyClusters, ciShare, prAction} from '../../scripts/agents/dispatch.mjs';
+import {parseCluster, foundLines, foundTitle, readyClusters, ciShare, prAction, sessionId} from '../../scripts/agents/dispatch.mjs';
 
 const cluster = `**Fault:** queries test symbols on rebuilt boxes.
 **Where:** \`src/engine-query.ts:159-265\` (\`textBoxes\`); \`src/engine.ts:2070-2078\`; MapLibre GL JS: \`maplibre-gl-dev.mjs:40719\`.
@@ -76,4 +76,10 @@ test('the action of a pull request', () => {
     assert.equal(prAction({mergeable_state: 'dirty', ci: 'green', auto_merge: false}), 'merge main');
     assert.equal(prAction({mergeable_state: 'blocked', ci: 'failed: render', auto_merge: true}), 'send the failure to its author');
     assert.equal(prAction({mergeable_state: 'clean', ci: 'green', auto_merge: false}), 'read the diff and turn on auto-merge');
+});
+
+test('the session id of the worker comes from the line "Session:" of the pull request body', () => {
+    assert.equal(sessionId('## What\ntext\nSession: session_013dg4LGjCYxHp27GK9RMvpq\n## How'), 'session_013dg4LGjCYxHp27GK9RMvpq');
+    assert.equal(sessionId('- Session: `abc-123`'), 'abc-123');
+    assert.equal(sessionId('The session of the owner ended.'), null);
 });

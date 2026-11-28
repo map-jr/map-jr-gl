@@ -86,14 +86,18 @@ Each round does these steps in order:
    last day that have no issue yet.
 2. For each pull request marked "read the diff and turn on auto-merge", read the source diff at its head (see
    "Merging") and turn on auto-merge for that head, one pull request in each command.
-3. For each pull request marked "send the failure to its author", read the failed job and send it to the session or
-   worker that opened the pull request. For one marked "merge main", ask the same session to run
-   `node scripts/agents/merge-main.mjs`.
-4. Start one worker for each ready cluster, up to the count that may start now, with the prompt of "The prompt of a
-   worker". A worker is a cloud session or a subagent of the type `worker` (Opus for a cluster). The worker writes its
-   report into the body of its pull request under "Found" and the other lines of the brief, and stops.
+3. For each pull request marked "send the failure to its author", read the failed job and send it with
+   `send_message` to the session id that the script prints with the pull request (the line `Session: <id>` of its
+   body; the row "Dispatcher" of #2255 has the same id next to the cluster issue). For one marked "merge main", ask
+   the same session to run `node scripts/agents/merge-main.mjs`.
+4. Start one worker for each ready cluster, up to the count that may start now, as a cloud session
+   (`create_session`, model Opus for a cluster). Its prompt is the prompt of "The prompt of a worker" with one more
+   line: "Write your report into the body of your pull request, and stop." Do not start a subagent: the round stops
+   after its round, and a subagent does not outlive the session that started it (see "Handoff"). The worker writes
+   its session id into the body of its pull request as a line `Session: <id>`, and its report under "Found" and the
+   other lines of the brief.
 5. File each "Found" line that the script lists, after a search of its own (see "Issues" in `CLAUDE.md`).
-6. Update the row "Dispatcher" of #2255: the time of the round, the workers that it started and the pull requests
+6. Update the row "Dispatcher" of #2255: the time of the round, the session id of each worker that it started next to its cluster issue, and the pull requests
    that it put into the queue. A round that changed nothing does not write to #2255.
 
 The session then stops. It does not wait for CI or for a worker: the next round reads their results.

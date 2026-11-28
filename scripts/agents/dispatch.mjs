@@ -6,7 +6,7 @@
 // The plan has three parts:
 // 1. Each open pull request: its head, the state of CI (from `headState` of prs.mjs), auto-merge on or off,
 //    `mergeable_state`, its changed files and the action: "read the diff and turn on auto-merge" (green, auto-merge
-//    off), "send the failure to its author" (red), "merge main" (`dirty`).
+//    off), "send the failure to its author" (red, with the session id of the line `Session: <id>` of its body), "merge main" (`dirty`).
 // 2. The cluster issues (an open issue whose body has a field `**Symptoms:**`) with the files of their `**Where:**`.
 //    A cluster is ready when no open pull request names it and no open pull request changes one of its files. The
 //    ready ones are listed oldest first, with the count that may start now: the share of CI (the number of pull
@@ -90,6 +90,11 @@ export function ciShare(body) {
     return m ? (words[m[1].toLowerCase()] ?? +m[1]) : 8;
 }
 
+/** The session id of the worker of a pull request: the line `Session: <id>` of its body, else null. */
+export function sessionId(body) {
+    return /^\s*[-*]?\s*\**Session\**:\**\s*`?([\w-]+)`?\s*$/m.exec(body ?? '')?.[1] ?? null;
+}
+
 /** The action of an open pull request. */
 export function prAction(pr) {
     if (pr.mergeable_state === 'dirty') return 'merge main';
@@ -106,7 +111,7 @@ function plan(repo) {
         const one = api(`pulls/${p.number}`);
         const files = api(`pulls/${p.number}/files?per_page=100`).map(f => f.filename);
         const ci = headState(p.head.sha, api).text;
-        const pr = {number: p.number, title: p.title, branch: p.head.ref, sha: p.head.sha, ci, auto_merge: !!p.auto_merge, mergeable_state: one.mergeable_state, files, body: p.body ?? ''};
+        const pr = {number: p.number, title: p.title, branch: p.head.ref, sha: p.head.sha, ci, auto_merge: !!p.auto_merge, mergeable_state: one.mergeable_state, session: sessionId(p.body), files, body: p.body ?? ''};
         return {...pr, action: prAction(pr)};
     });
     const issues = [];
@@ -134,7 +139,7 @@ function plan(repo) {
 
 function text(p) {
     const out = [`Open pull requests (${p.prs.length}):`];
-    for (const r of p.prs) out.push(`  #${r.number} ${r.branch} ${r.sha.slice(0, 8)} ${r.ci.startsWith("CI") ? r.ci : `CI ${r.ci}`}; auto-merge ${r.auto_merge ? 'on' : 'off'}; ${r.mergeable_state}; ${r.files.length} files -> ${r.action}`);
+    for (const r of p.prs) out.push(`  #${r.number} ${r.branch} ${r.sha.slice(0, 8)} ${r.ci.startsWith("CI") ? r.ci : `CI ${r.ci}`}; auto-merge ${r.auto_merge ? 'on' : 'off'}; ${r.mergeable_state}; ${r.files.length} files; session ${r.session ?? 'unknown'} -> ${r.action}`);
     const ready = p.clusters.filter(c => c.ready);
     out.push('', `Cluster issues (${p.clusters.length}, ${ready.length} ready); share of CI ${p.share}, ${p.free} may start now:`);
     for (const c of ready) out.push(`  ready #${c.number} ${c.title} (${c.created.slice(0, 10)}; ${c.files.join(', ') || 'no files'})`);
