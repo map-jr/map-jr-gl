@@ -692,7 +692,7 @@
 "line-dasharray/literal/line-width-zoom-function": "match",
 "line-dasharray/long-segment": "match",
 "line-dasharray/overscaled": "near",
-"line-dasharray/property-function/cap-default": "near",
+"line-dasharray/property-function/cap-default": "match",
 "line-dasharray/property-function/cap-round": "match",
 "line-dasharray/round/segments": "match",
 "line-dasharray/round/single-dasharray-element": "match",

@@ -5768,6 +5768,28 @@ for (const renderer of ['worker', 'main']) {
             });
             check("a map with nonce: 'x' after a map without one has styled controls when style-src blocked the first sheet (#2435)", two.corner === 'absolute' && two.sheets === 1, JSON.stringify(two));
         } finally { await page.close(); }
+        // #2512: the styles() control adds its fallback sheet to the root of the map, and a map with a nonce replaces a blocked one.
+        const page2 = await browser.newPage({viewport: {width: 600, height: 400}});
+        try {
+            await page2.route(`${origin}/csp-page`, r => r.fulfill({contentType: 'text/html', headers: {'Content-Security-Policy': "style-src 'nonce-x'"}, body: '<!doctype html><title>csp</title><body></body>'}));
+            await page2.addInitScript(() => { delete Document.prototype.adoptedStyleSheets; delete ShadowRoot.prototype.adoptedStyleSheets; });
+            await page2.goto(`${origin}/csp-page`);
+            const res = await page2.evaluate(async () => {
+                const lib = await import('/dist/map-jr-gl.js'), {styles} = await import('/dist/controls.js');
+                const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+                const entries = [{label: 'A', style}];
+                const until = async f => { for (const end = Date.now() + 15000; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 30)); return f(); };
+                const make = (parent, nonce) => { const el = parent.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'})); return {el, map: lib.createMap(el, {style, renderer: 'main', controls: [styles({entries})], ...nonce && {nonce}})}; };
+                const pos = async m => { await until(() => m.el.querySelector('.map-jr-styles')); return getComputedStyle(m.el.querySelector('.map-jr-styles')).position; };
+                const host = document.body.appendChild(document.createElement('div')), root = host.attachShadow({mode: 'open'});
+                const s = make(root, 'x'), a = make(document.body), b = make(document.body, 'x');
+                const out = {shadow: await pos(s), shadowSheet: !!root.getElementById('map-jr-styles-css'), blocked: await pos(a), nonce: await pos(b), sheets: document.querySelectorAll('#map-jr-styles-css').length};
+                s.map.destroy(); a.map.destroy(); b.map.destroy();
+                return out;
+            });
+            check("a styles() control in a shadow root is styled and has its sheet in that root (#2512)", res.shadow === 'relative' && res.shadowSheet, JSON.stringify(res));
+            check("a styles() control of a map with nonce: 'x' after a map without one is styled when style-src blocked the first sheet (#2512)", res.nonce === 'relative' && res.sheets === 1, JSON.stringify(res));
+        } finally { await page2.close(); }
     } catch (e) { check('the style sheet in a shadow root and with a nonce was checked', false, String(e.message).split('\n')[0]); }
 }
 // #828: a map in an open shadow root. The focus moves into a popup that opens and returns to the map after Escape, from
