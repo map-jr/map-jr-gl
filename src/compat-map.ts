@@ -854,8 +854,14 @@ export class Map extends CoreMap {
         this.waiting = list;
         try { for (let e; (e = list.shift());) this.fire(e[0], {...e[1]}); } finally { this.waiting = undefined; }
     }
+    /** As in MapLibre GL JS, `around` is a position: the core takes the screen point of it (`aroundPoint`), computed at the start. */
+    private anchored<T extends {around?: LngLatLike}>(o: T): T {
+        if (o.around === undefined) return o;
+        const {around, ...rest} = o, [lng, lat] = toLngLat(around);
+        return {...rest, aroundPoint: this.tr.project(lng, lat)} as unknown as T;
+    }
     easeTo(o: EaseToOptions, eventData?: EventData) {
-        return this.interrupting(() => this.camera(eventData, () => super.easeTo(this.snapped(o))));
+        return this.interrupting(() => this.camera(eventData, () => super.easeTo(this.snapped(this.anchored(o)))));
     }
     /**
      * As `scheduleSegment` of MapLibre GL JS, an animation that starts while another runs ends the old movement during
@@ -900,8 +906,10 @@ export class Map extends CoreMap {
     private gesturing?: () => boolean;
     private nested = 0;
     protected override fireResize = true;
-    flyTo(o: EaseToOptions & FlyOptions, eventData?: EventData) {
-        return this.interrupting(() => this.camera(eventData, () => super.flyTo(this.snapped(o))));
+    /** As in MapLibre GL JS, a flight has no `around`: the option is read by `easeTo` only. */
+    flyTo(o: Omit<EaseToOptions, 'around'> & FlyOptions, eventData?: EventData) {
+        const {around: _around, ...rest} = o as typeof o & {around?: unknown};
+        return this.interrupting(() => this.camera(eventData, () => super.flyTo(this.snapped(rest))));
     }
     protected override observed(first: boolean) {
         // As in MapLibre GL JS, the first call of the observer is for the size that the map has, and does nothing.

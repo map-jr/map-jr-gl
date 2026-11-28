@@ -1206,13 +1206,13 @@ export class Map {
         return this;
     }
     /**
-     * `offset` ([x, y] or {x, y}, CSS pixels) puts `center` at that distance from the center of the view, as in
+     * `aroundPoint` ([x, y], CSS pixels) keeps the place under that point where it is (the compat entry turns its option `around`, a position, into it). `offset` ([x, y] or {x, y}, CSS pixels) puts `center` at that distance from the center of the view, as in
      * MapLibre GL JS. `easing` maps the time (0 to 1) to the progress (0 to 1); it is sampled into a table of 65
      * values, because a function cannot be sent to the engine's worker.
      */
-    easeTo(o: CameraInput & {duration?: number; around?: [number, number]; offset?: PointLike; easing?: (t: number) => number}) {
+    easeTo(o: CameraInput & {duration?: number; aroundPoint?: [number, number]; offset?: PointLike; easing?: (t: number) => number}) {
         const fly = this.flight; this.flight = undefined;
-        const {zoom, bearing, pitch, around} = o;
+        const {zoom, bearing, pitch, aroundPoint: around} = o;
         let center = o.center;
         const padding = o.padding === undefined ? undefined : paddingOf(o.padding);
         if (o.offset) {
@@ -2518,7 +2518,7 @@ export class Map {
             const now = performance.now();
             if (gesture) {
                 // Two fingers down and up again quickly, without moving: zoom out.
-                if (gesture.mode === 'undecided' && now - gesture.t0 < 300 && gesture.travel < 12 && this.touchZoomRotate.isEnabled()) this.easeTo({zoom: this.tr.zoom - 1, around: [gesture.mid.x, gesture.mid.y], duration: 300});
+                if (gesture.mode === 'undecided' && now - gesture.t0 < 300 && gesture.travel < 12 && this.touchZoomRotate.isEnabled()) this.easeTo({zoom: this.tr.zoom - 1, aroundPoint: [gesture.mid.x, gesture.mid.y], duration: 300});
                 gesture = null;
                 suppressClick = true; // the finger still down must not pan-fling or click when it lifts
                 samples = [];
@@ -2534,7 +2534,7 @@ export class Map {
                     // (The zoom waits for the listeners of `dblclick`, which the compat entry calls later: see `mouseEvent`.)
                     // (`doubleClickZoom.isActive()` is true until the next task, as in MapLibre GL JS.)
                     if (this.doubleClickZoom.isEnabled()) { this.doubleClickZoom.active = true; setTimeout(() => { this.doubleClickZoom.active = false; }); }
-                    const {x, y} = tapDrag, zoom = () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + 1, around: [x, y], duration: 300}); };
+                    const {x, y} = tapDrag, zoom = () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + 1, aroundPoint: [x, y], duration: 300}); };
                     if (e.type === 'blur') zoom(); else mouseEvent('dblclick', e, {}, zoom);
                 }
                 tapDrag = null;
@@ -2614,7 +2614,7 @@ export class Map {
             if (e.shiftKey) value /= 4;
             if (wheelKind && value) send(value);
         }, {passive: false});
-        listen('dblclick', e => { if (lastPointerType === 'touch') return; /* touch double-taps are handled above, uniformly across browsers */ const p = pos(e); mouseEvent('dblclick', e, {}, () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + (e.shiftKey ? -1 : 1), around: [p.x, p.y], duration: 300}); }); });
+        listen('dblclick', e => { if (lastPointerType === 'touch') return; /* touch double-taps are handled above, uniformly across browsers */ const p = pos(e); mouseEvent('dblclick', e, {}, () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + (e.shiftKey ? -1 : 1), aroundPoint: [p.x, p.y], duration: 300}); }); });
         listen('contextmenu', e => { e.preventDefault(); mouseEvent('contextmenu', e); });
         listen('pointerenter', e => { if (e.pointerType === 'mouse') mouseEvent('mouseover', e); });
         listen('pointerleave', e => { if (e.pointerType === 'mouse') mouseEvent('mouseout', e); });
