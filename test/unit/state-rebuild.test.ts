@@ -64,3 +64,19 @@ test('state rebuild: the builds read the tile that the worker keeps decoded, and
     assert.equal(fetches, 1);
     assert.equal((b as any).asked.size, 1);
 });
+
+test('feature state: a tile whose batches are replaced has a new number, so the ground of 3D terrain draws it again', async () => {
+    // (The picture of the ground is kept while the numbers of its tiles are the same: `signature` in src/terrain.ts.)
+    const {GLRenderer} = await import('../../src/gl.ts');
+    // A WebGL context that accepts every call: a constant is 1, and a call gives an object.
+    const gl = new Proxy({}, {get: (_, k) => typeof k === 'string' && /^[A-Z_0-9]+$/.test(k) ? 1 : () => ({})});
+    const r = Object.assign(Object.create(GLRenderer.prototype), {gl, uids: 0}) as any;
+    const fill = () => ({type: 'fill' as const, pos: Int16Array.from([0, 0, 10, 0, 10, 10]), idx: Uint32Array.from([0, 1, 2])});
+    const t = r.createTile({layers: {lit: fill(), other: fill()}, labels: {}});
+    const uid = t.uid, other = t.batches.other, lit = t.batches.lit;
+    r.replaceBatches(t, ['lit'], {layers: {lit: fill()}, labels: {}});
+    assert.notEqual(t.uid, uid);
+    // (The batch of the layer that reads the state is new, and the batch of the other layer is the one that it was.)
+    assert.notEqual(t.batches.lit, lit);
+    assert.equal(t.batches.other, other);
+});

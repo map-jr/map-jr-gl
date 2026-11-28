@@ -1178,6 +1178,8 @@ export class GLRenderer {
         const fresh = this.createTile({...tile, labels: {}, icons: undefined}).batches;
         for (const id of ids) for (let k = 0, key; t.batches[key = patternKey(id, k)]; k++) { this.freeBatch(t.batches[key]); delete t.batches[key]; }
         Object.assign(t.batches, fresh);
+        // (What keeps a picture of the tile, as the ground of 3D terrain does, knows the tile by this number: it draws again.)
+        t.uid = ++this.uids;
     }
 
     destroyTile(t: GLTile) {

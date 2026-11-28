@@ -70,12 +70,12 @@ test('cells: the cells of a batch are all of its indices in ranges that follow e
         assert.equal(next, g.idx.length, id);
         if (cells.length > 1 && triangles(g.idx).join() !== triangles(plain[id].idx).join()) sorted++;
     }
-    // (The fixture has batches that are large enough for a grid: water, roads, wide, buildings and flat.)
-    assert.ok(sorted >= 4, `${sorted} batches are sorted by cell`);
+    // (The fixture has batches that are large enough for a grid and whose order does not show: water, roads and wide.)
+    assert.ok(sorted >= 3, `${sorted} batches are sorted by cell`);
 });
 
 test('cells: a cell has the triangles of the polygons around that cell of the grid, in their order, and its box is small', () => {
-    const g = built.buildings, was = triangles(plain.buildings.idx), order = new Map(was.map((t, i) => [t, i]));
+    const g = built.roads, was = triangles(plain.roads.idx), order = new Map(was.map((t, i) => [t, i]));
     const cells = cellsOfBatch(g);
     assert.ok(cells.length > 16, `${cells.length} cells`);
     let small = 0;
@@ -83,15 +83,17 @@ test('cells: a cell has the triangles of the polygons around that cell of the gr
         const at = triangles(g.idx.subarray(start, start + count)).map(t => order.get(t)!);
         // (Two triangles with the same corners are next to each other in both orders, so the place of the first is enough.)
         for (let i = 1; i < at.length; i++) assert.ok(at[i] >= at[i - 1], 'the order within a cell');
-        // (A cell of the grid is a sixteenth of the tile or less a side, and a building is seldom larger than that.)
+        // (A cell of the grid is a sixteenth of the tile or less a side, and a group of a line is seldom larger than that.)
         if (x1 - x0 < EXTENT / 2 && y1 - y0 < EXTENT / 2) small++;
     }
     assert.ok(small >= cells.length * 0.9, `${small} of ${cells.length} cells are smaller than half the tile`);
 });
 
 test('cells: a batch whose order shows in the picture is not sorted', () => {
-    // A color for each feature, a sort key, an image along the line, and a pattern on the walls of a building.
-    for (const id of ['land', 'sorted', 'pattern']) {
+    // A color for each feature, a sort key, an image along the line, and buildings: each pixel takes the wall that is
+    // drawn first, and the shade of a wall depends on the height of its building, so where a building and its part have
+    // a wall in one plane, the order shows.
+    for (const id of ['land', 'sorted', 'pattern', 'buildings', 'flat']) {
         assert.deepEqual(triangles(built[id].idx), triangles(plain[id].idx), id);
         assert.ok(built[id].cells!.length >= CELL_HEAD + CELL, id);
     }
@@ -148,5 +150,5 @@ test('cells: the tile that goes to the renderer, with its sorted indices and its
         h.update(id + k);
         h.update(ArrayBuffer.isView(v) ? new Uint8Array(v.buffer, v.byteOffset, v.byteLength) : String(JSON.stringify(v)));
     }
-    assert.equal(h.digest('hex'), 'a856ed21c5d7e6181d02704f672af56dc2ebc08fd8e6c729d232ec4f469a65fa');
+    assert.equal(h.digest('hex'), '588f6e16f40137fa740a16bf4a288f9ef64b016d79d48bc313c0f3f0d362139b');
 });

@@ -1113,12 +1113,15 @@ function group(groups: number[], start: number, c: ArrayLike<number>, s: number,
  *
  * Sorting changes the order in which the triangles of a batch are drawn. Where two triangles of one color overlap, the
  * result is the same in either order (to the rounding of a color channel). A batch whose triangles differ in color, or
- * whose order shows in another way (`ordered`), is not sorted: its cells are runs of groups in their order.
+ * whose order shows in another way (`ordered`), is not sorted: its cells are runs of groups in their order. The
+ * buildings of a fill-extrusion layer are never sorted: each pixel takes the wall that is drawn first, and the shade of
+ * a wall depends on the height of its building, so where the walls of a building and of its part lie in one plane, the
+ * order shows.
  */
 export function cellsOf(g: GLBatch, groups: number[], ordered?: boolean) {
     const idx = g.idx, total = idx.length, n = groups.length / GROUP;
     if (!n || groups[0] || total >= 1 << 24) return;
-    const keep = ordered || !!g.color || g.type === 'extrusion' && !!g.ed;
+    const keep = ordered || !!g.color || g.type === 'extrusion';
     // (The side of the grid is a power of 2 up to 16, with about CELL_TRIANGLES triangles in a cell. A batch that keeps
     // its order has up to 256 cells of that many triangles or more.)
     const side = keep ? 1 : Math.min(16, 2 ** Math.max(0, Math.floor(Math.log2(total / 3 / CELL_TRIANGLES) / 2))), run = Math.max(CELL_TRIANGLES * 3, Math.ceil(total / 256));

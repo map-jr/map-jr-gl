@@ -1935,11 +1935,12 @@ export class Engine {
                 const t = this.tiles.get(source + '|' + k);
                 if (t?.state !== 'ok' || t.missing) return undefined;
                 t.used = frameNo;
-                if (t.stale && !t.rebuilding) {
-                    // A tile of another zoom level standing in for a missing one: bring its data up to date as well.
-                    const [z, x, y] = k.split('/').map(Number);
-                    t.stale = false;
-                    this.rebuild(source, {z, x, y, w: 0, key: k}, source + '|' + k, t);
+                if ((t.stale || t.stateStale) && !t.rebuilding) {
+                    // A tile of another zoom level standing in for a missing one: bring its data up to date as well, in
+                    // full, or the layers that read feature state when only that changed.
+                    const [z, x, y] = k.split('/').map(Number), id = {z, x, y, w: 0, key: k};
+                    if (t.stale) { t.stale = t.stateStale = false; t.stateSeen = this.stateLog.get(source)?.count ?? 0; this.rebuild(source, id, source + '|' + k, t); }
+                    else this.rebuildState(source, id, source + '|' + k, t);
                 }
                 return t.gl;
             };
