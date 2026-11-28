@@ -117,7 +117,7 @@ function wrap(text: string, maxWidth: number, measure: (s: string) => number): s
             const last = i === words.length;
             // Opening brackets prefer to start a line and closing ones to end it, so breaks beside them cost a little.
             // A break between ideographs costs more when the text marks better places with zero-width spaces, as in MapLibre.
-            const penalty = last ? 0 : (/[(（]\s*$/.test(words[i - 1]) ? 50 : 0) + (/^[)）]/.test(words[i]) ? 50 : 0) + (zwsp && IDEO_BREAK.test(words[i - 1].slice(-1)) ? 150 : 0);
+            const penalty = last ? 0 : (/[(（]\s*$/.test(words[i - 1]) ? 50 : 0) + (/^[-]?[)）]/.test(words[i]) ? 50 : 0) + (zwsp && IDEO_BREAK.test(words[i - 1].slice(-1)) ? 150 : 0);
             let choice = {badness: Infinity, prev: 0, x};
             for (let j = 0; j < i; j++) {
                 const width = x - best[j].x;

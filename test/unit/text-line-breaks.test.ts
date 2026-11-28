@@ -28,3 +28,10 @@ test('Thai text breaks between words, which it writes without spaces (#2593, #17
     assert.ok(out.length > 1, JSON.stringify(out));
     assert.equal(out.join(''), thai);
 });
+
+test('a styled ")" in rich text keeps the penalty of a break before it (#2593)', () => {
+    const plain = lines('Aaaaaaa Bbbbbbb ) Ccc', 4);
+    const rich = lines('Aaaaaaa Bbbbbbb 1||||) Ccc', 4).map(l => l.replace(/[-]/g, ''));
+    assert.deepEqual(plain, ['Aaaaaaa', 'Bbbbbbb )', 'Ccc']);
+    assert.deepEqual(rich, plain);
+});
