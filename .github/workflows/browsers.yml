@@ -31,7 +31,9 @@ concurrency:
   group: ${{ inputs.safari_only && 'browsers-safari-only' || 'browsers' }}
   cancel-in-progress: false
 jobs:
-  run:
+  # The benchmark and the behavior tests are separate jobs, so that a slow benchmark cannot leave the tests without time
+  # (#2267, #1565, #2262): in one job with a limit of 55 minutes, the runs of 2026-11-28 were cancelled at the limit.
+  bench:
     if: ${{ !inputs.safari_only }}
     strategy:
       fail-fast: false
@@ -39,7 +41,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         browser: [chromium, firefox, webkit]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 55
+    timeout-minutes: 40
     defaults:
       run:
         shell: bash
@@ -69,15 +71,57 @@ jobs:
           if [ "${{ matrix.browser }}" = firefox ]; then export HEADED=1; fi
           run=""; if [ "${{ runner.os }}" = Linux ]; then run="xvfb-run -a"; fi
           $run node test/bench/browsers.mjs results || echo "benchmark script failed" > "results/${{ runner.os }}-${{ matrix.browser }}-failed.txt"
-          # The behaviour tests, in this browser. Failures are recorded; they do not stop the run.
-          name="$(node -e "console.log(require('os').platform())")-${{ matrix.browser }}"
-          (($run node test/interact.mjs results/shots; $run node test/host.mjs; $run node test/vue.mjs; $run node test/react.mjs) 2>&1 | grep -E "^(PASS|FAIL)" | cut -c1-600 > "results/$name-tests.txt") || true
-          rm -rf results/shots
           cat results/*.md >> "$GITHUB_STEP_SUMMARY" || true
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: results-${{ matrix.os }}-${{ matrix.browser }}
+          path: results
+
+  tests:
+    if: ${{ !inputs.safari_only }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        browser: [chromium, firefox, webkit]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    env:
+      BROWSER: ${{ matrix.browser }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The browser driver is not a dependency of the package: the development machine has its own copy.
+      - run: pnpm add -D playwright@1.65.1
+      # The system packages come from the Ubuntu mirror, which can be out of reach for a while (#1091): try 3 times.
+      - name: Install the browser and its system packages
+        shell: bash
+        run: for i in 1 2 3; do pnpm exec playwright install --with-deps ${{ matrix.browser }} && exit 0; echo "::warning::the install failed (attempt $i of 3)"; sleep 30; done; exit 1
+      - run: node build.mjs && node scripts/site.mjs
+      - name: Behavior tests
+        run: |
+          PORT=8080 node demo/serve.mjs &
+          for i in $(seq 1 30); do curl -s -o /dev/null http://localhost:8080/ && break; sleep 1; done
+          mkdir -p results
+          if [ "${{ matrix.browser }}" = firefox ]; then export HEADED=1; fi
+          run=""; if [ "${{ runner.os }}" = Linux ]; then run="xvfb-run -a"; fi
+          # The behaviour tests, in this browser. Failures are recorded; they do not stop the run.
+          name="$(node -e "console.log(require('os').platform())")-${{ matrix.browser }}"
+          (($run node test/interact.mjs results/shots; $run node test/host.mjs; $run node test/vue.mjs; $run node test/react.mjs) 2>&1 | grep -E "^(PASS|FAIL)" | cut -c1-600 > "results/$name-tests.txt") || true
+          rm -rf results/shots
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: tests-${{ matrix.os }}-${{ matrix.browser }}
           path: results
   # Safari itself, which Playwright cannot drive (its "webkit" is another build of the engine). safaridriver is part of
   # macOS; test/bench/webdriver.mjs speaks to it. The machine has a virtual GPU, so the frame rates say little; what
@@ -136,7 +180,7 @@ jobs:
           name: results-safari
           path: results
   publish:
-    needs: [run, safari]
+    needs: [bench, tests, safari]
     if: ${{ always() && !inputs.safari_only }}
     runs-on: ubuntu-latest
     steps:

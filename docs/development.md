@@ -378,7 +378,8 @@ is computed at run time, such as `x[key]`, so do not call these methods in that 
 
 The workflow `Browsers` (`.github/workflows/browsers.yml`) runs on each push that changes the code. It runs the
 benchmark page and the behavior tests in Chromium, Firefox and WebKit on Linux, macOS and Windows. WebKit is the
-engine of Safari.
+engine of Safari. The benchmark (job `bench`, limit 40 minutes) and the behavior tests (job `tests`, limit 45 minutes)
+are separate jobs, so a slow benchmark does not cancel the tests.
 
 The same workflow has a job `safari`, which runs only when you start the workflow by hand. It runs the benchmark
 page in Safari itself on macOS through `safaridriver` (`test/bench/webdriver.mjs`). Playwright's WebKit is another
