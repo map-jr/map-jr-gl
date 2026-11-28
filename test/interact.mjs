@@ -753,8 +753,7 @@ for (const mode of renderers) {
             await new Promise(r => m.once('load', r));
             const log = [];
             for (const t of ['movestart', 'zoomstart', 'move', 'zoom', 'zoomend', 'moveend']) m.on(t, () => log.push(t));
-            // (MapLibre GL JS reads `around` as a position, and this entry reads a point of the screen in CSS pixels.)
-            m.easeTo({zoom: 5, duration: 0, around: lib === 'ml' ? m.unproject([100, 100]) : [100, 100]});
+            m.easeTo({zoom: 5, duration: 0, around: m.unproject([100, 100])});
             const sync = log.join(' '), c = m.getCenter(), z = m.getZoom();
             await new Promise(r => setTimeout(r, 800));
             m.remove(); el.remove();
@@ -763,6 +762,33 @@ for (const mode of renderers) {
         const aroundOurs = await aroundJump('ours'), aroundMl = await aroundJump('ml');
         check(`[${mode}] easeTo with around and duration 0 fires its events once, inside the call, as in MapLibre GL JS (#2394)`,
             aroundOurs === aroundMl && aroundMl.startsWith('movestart zoomstart move zoom zoomend moveend [') && aroundMl.endsWith(' 6'), JSON.stringify({aroundOurs, aroundMl}));
+        // `around` of easeTo is a position (any form of LngLatLike), not a point of the screen, and flyTo ignores it:
+        // the center after the move is the one of MapLibre GL JS (#2424).
+        const aroundAt = (lib, how, pg = page) => pg.evaluate(async ([lib, renderer, how]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const done = new Promise(r => m.once('moveend', r));
+            if (how === 'ease') m.easeTo({zoom: 5, duration: 0, around: [20, 20]});
+            else if (how === 'easeAnimated') m.easeTo({zoom: 5, duration: 200, around: {lng: 20, lat: 20}});
+            else if (how === 'fly') m.flyTo({zoom: 5, duration: 200, around: [20, 20], essential: true}); // (a flight ignores `around`)
+            else m.flyTo({zoom: 5, around: [20, 20]}); // (with reduced motion, flyTo is an easeTo, which reads `around`)
+            await done;
+            const c = m.getCenter(), z = m.getZoom();
+            m.remove(); el.remove();
+            return [+z.toFixed(3), +c.lng.toFixed(2), +c.lat.toFixed(2)];
+        }, [lib, mode, how]).catch(e => String(e));
+        for (const how of ['ease', 'easeAnimated', 'fly', 'flyReduced']) {
+            // (MapLibre GL JS reads the preference when its module loads, so the reduced-motion case has a page of its own.)
+            const pg = how === 'flyReduced' ? await browser.newPage({reducedMotion: 'reduce'}) : page;
+            if (pg !== page) { await pg.goto(`${origin}/?renderer=${mode}`); await pg.waitForFunction(() => window.mapLoaded, null, {timeout: 30000}); }
+            const [o, ml] = [await aroundAt('ours', how, pg), await aroundAt('ml', how, pg)];
+            if (pg !== page) await pg.close();
+            check(`[${mode}] ${how} with around as a position (flyTo ignores it) ends at the center of MapLibre GL JS (#2424)`,
+                Array.isArray(o) && Array.isArray(ml) && o.every((v, i) => Math.abs(v - ml[i]) < 0.02), JSON.stringify({o, ml}));
+        }
         // An easeTo or flyTo with no movement running fires movestart inside the call, also right after a jumpTo and for an
         // ease that leaves the view as it is, and the movement does not end before the animation, as in MapLibre GL JS (#2451).
         const firstEase = (lib, scenario) => page.evaluate(async ([lib, renderer, scenario]) => {

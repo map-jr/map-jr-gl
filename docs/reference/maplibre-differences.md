@@ -354,7 +354,10 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 ### `easeTo`, `flyTo`
 
 - Both accept an `easing` function and an `offset`.
-- Both accept both, as MapLibre GL JS does. `offset` ([x, y] or {x, y}, in CSS pixels) puts `center` at that distance from the center of the view at the end, also with `bearing` and `pitch`. The library samples the `easing` function at 65 points when the call is made and interpolates linearly between them, so a curve with a change that is narrower than 1/64 of the duration is smoothed. `flyTo` zooms out and back in along the curve of MapLibre GL JS 6.17 (van Wijk and Nuij), with the options `curve`, `speed`, `screenSpeed`, `minZoom` and `maxDuration`; without `duration`, the duration follows from the distance. When the system asks for reduced motion and `essential` is not `true`, `flyTo` jumps, as in MapLibre GL JS. `fitBounds` and `fitScreenCoordinates` fly in the same way, or ease as `easeTo` does when the options set `linear`, as in MapLibre GL JS.
+- Both accept both, as MapLibre GL JS does. `offset` ([x, y] or {x, y}, in CSS pixels) puts `center` at that distance from the center of the view at the end, also with `bearing` and `pitch`. The library samples the `easing` function at 65 points when the call is made and interpolates linearly between them, so a curve with a change that is narrower than 1/64 of the duration is smoothed.
+- `flyTo` zooms out and back in along the curve of MapLibre GL JS 6.17 (van Wijk and Nuij), with the options `curve`, `speed`, `screenSpeed`, `minZoom` and `maxDuration`; without `duration`, the duration follows from the distance. When the system asks for reduced motion and `essential` is not `true`, `flyTo` jumps, as in MapLibre GL JS.
+- `around` is a position (a `LngLatLike`), as in MapLibre GL JS: the place stays under its screen point from before the call while the zoom, bearing and pitch change. `easeTo` reads it. `flyTo` reads it only when it jumps for reduced motion, because that jump is an `easeTo`; otherwise it ignores it, as MapLibre GL JS does.
+- `fitBounds` and `fitScreenCoordinates` fly in the same way, or ease as `easeTo` does when the options set `linear`, as in MapLibre GL JS.
 
 ### Events
 
