@@ -609,7 +609,7 @@ export function placeLabels(
 
                 // Where the text could go: along the line, at one of several anchors, or at its fixed anchor.
                 let twin: {layer: string; group?: string; box: Box; x: number; y: number; justify?: number} | undefined, twinKey = '';
-                let flatFrames: number[][] | undefined, flatSizes: number[] = [], textAngle = 0, candidates: [number, number][] = [], frame: number[] | undefined;
+                let flatFrames: number[][] | undefined, flatSizes: number[] = [], ground: [number, number][] = [], textAngle = 0, candidates: [number, number][] = [], frame: number[] | undefined;
                 /** Text that follows its line (placed already). */
                 let bent: Placed | undefined, bentBoxes: Circle[] = [];
                 const anchors: string[] = [];
@@ -677,6 +677,7 @@ export function placeLabels(
                         // sphere from there.
                         frame = groundFrame(tr, it, l.x, l.y, ax, ay, turned - north);
                         const [a, b, c, d] = frame, at = candidates.map(([dx, dy]) => frameAt(frame!, dx, dy));
+                        ground = candidates;
                         textAngle = Math.atan2(b, a);
                         flatFrames = at.map(g => g[0]);
                         candidates = at.map(g => [g[1], g[2]]);
@@ -706,9 +707,10 @@ export function placeLabels(
                 const ic = meta && l.icon, iflat = (!!tr.pitch || tr.globeness > 0) && !!ic && ic.flat && ic.fit === 'none';
                 const isize = ic ? (L.p.iconSize.dd ? ic.size + (ic.size1 - ic.size) * t : L.p.iconSize.eval(tr.zoom)) * (L.fixedSize ? 1 : iflat ? flatSize(tr, depth) : persp) : 0;
                 // Where the icon goes and its size, for text centered at (tx, ty).
-                const sprite = meta, move = ic ? translateAt(tr, it.id, l.x, l.y, ax, ay, itt) : [0, 0];
-                const iconAt = (fit: string, tx: number, ty: number) => {
-                    const ic = l.icon!, meta = sprite!;
+                const sprite = meta, move = ic ? translateAt(tr, it.id, l.x, l.y, ax, ay, itt) : [0, 0], icon0 = isize;
+                // (`tw`, `th`: the size of the text; `isize`: the size of the icon. On the ground both have their size there.)
+                const iconAt = (fit: string, tx: number, ty: number, tw = w, th = h, isize = icon0) => {
+                    const ic = l.icon!, meta = sprite!, w = tw, h = th;
                     let iw = meta.width / meta.pixelRatio * isize, ih = meta.height / meta.pixelRatio * isize;
                     // The anchor names the part of the icon that sits on the point.
                     let ix = ax + ic.offset[0] * isize + (ic.anchor.includes('left') ? iw / 2 : ic.anchor.includes('right') ? -iw / 2 : 0);
@@ -740,8 +742,27 @@ export function placeLabels(
                     }
                     return {ix: ix + move[0], iy: iy + move[1], iw, ih, gx, gy};
                 };
+                /**
+                 * The box on the ground of an icon of `bw` by `bh` pixels on the ground whose center is (`dx`, `dy`) from the anchor
+                 * before `icon-rotate`. As in MapLibre GL JS, `icon-padding` is added on the ground, the box turns by `icon-rotate`
+                 * and goes through the ground at the anchor, and it turns with the map when `text-rotation-alignment` is `map`.
+                 */
+                const groundBox = (bw: number, bh: number, dx: number, dy: number) => {
+                    const [pt, pr, pb, pl] = l.icon!.padding, rot = l.icon!.rotate * Math.PI / 180, c = Math.cos(rot), sn = Math.sin(rot);
+                    const w0 = bw + pl + pr, h0 = bh + pt + pb;
+                    const ox = dx * c - dy * sn + ((pr - pl) * c - (pb - pt) * sn) / 2, oy = dx * sn + dy * c + ((pr - pl) * sn + (pb - pt) * c) / 2;
+                    const [f, px, py] = frameAt(groundFrame(tr, it, l.x, l.y, ax, ay, l.upright ? -north : 0), ox, oy);
+                    return quadBox(f, ax + move[0] + px, ay + move[1] + py, w0 * Math.abs(c) + h0 * Math.abs(sn), w0 * Math.abs(sn) + h0 * Math.abs(c), 0);
+                };
+                // An icon that `icon-text-fit` stretches around text on the ground has its box on the ground too, around the
+                // text of candidate `i` (#2505): its size, its offset and `icon-text-fit-padding` are taken on the ground.
+                const fittedBox = (fit: string, i: number) => {
+                    const g = flatSize(tr, depth) / (L.fixedSize ? 1 : persp), [dx, dy] = ground[i];
+                    const f = iconAt(fit, ax + dx, ay + dy, flatSizes[0], flatSizes[1], isize * g);
+                    return groundBox(f.iw, f.ih, f.ix - move[0] - ax, f.iy - move[1] - ay);
+                };
                 let textBox: Box | null = null, tx = ax, ty = ay;
-                let justify: number | undefined, anchor: string | undefined;
+                let justify: number | undefined, anchor: string | undefined, chosen = -1;
                 if (twin) { textBox = twin.box; tx = twin.x; ty = twin.y; justify = twin.justify; }
                 else {
                     // As in MapLibre GL JS: the anchor of the previous placement first, then every anchor where nothing
@@ -758,9 +779,9 @@ export function placeLabels(
                         if (!overlap && grid.hits(...box)) continue;
                         if (fitted && !overlap) {
                             const f = iconAt(ic.fit, ax + dx, ay + dy);
-                            if (grid.hits(...boxAround(f.ix, f.iy, f.iw, f.ih, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn))) continue;
+                            if (grid.hits(...(flat ? fittedBox(ic.fit, i) : boxAround(f.ix, f.iy, f.iw, f.ih, ic.rotate * Math.PI / 180 + bturn, ic.padding, bturn)))) continue;
                         }
-                        textBox = box; tx = ax + dx; ty = ay + dy;
+                        textBox = box; tx = ax + dx; ty = ay + dy; chosen = i;
                         if (flatFrames) { frame = flatFrames[i]; textAngle = Math.atan2(frame[1], frame[0]); }
                         anchor = anchors[i];
                         if (anchor && l.justifyAuto) justify = justification('auto', anchors[i]);
@@ -825,26 +846,20 @@ export function placeLabels(
                     // fitted to text has the box of its picture, turned by `icon-rotate` with its offset from the anchor. (`k`: the size
                     // of the box for each pixel of `iw`, which has the size of the drawn icon.)
                     const point = !line && fit === 'none', k = L.fixedSize ? 1 : iflat ? flatSize(tr, depth) : persp;
-                    const c = Math.cos(rot), sn = Math.sin(rot), dx = ix - move[0] - ax, dy = iy - move[1] - ay;
+                    const dx = ix - move[0] - ax, dy = iy - move[1] - ay;
                     // (On the globe without pitch, the box lies on the ground only with text on the ground (`flat`): as in
                     // MapLibre GL JS, `text-pitch-alignment` decides it, so a box does not change at the switch to Mercator.)
                     // (On the screen the box has the perspective ratio, `e` for each pixel of `iw`, and turns by the bearing with `bt`.)
                     const e = persp / k, a = rot + bt, ca = Math.cos(a) * e, sa = Math.sin(a) * e;
                     let box = point ? boxAround(cx + dx * ca - dy * sa, cy + dx * sa + dy * ca, iw * e, ih * e, a, ic.padding, bt)
                         : iflat && (!!tr.pitch || flat) ? boxAround(qx, qy, bw, bh, held.ang, ic.padding) : iflat ? boxAround(qx, qy, iw * r, ih * r, rot + bt, ic.padding, bt) : boxAround(qx, qy, bw, bh, rot + bt, ic.padding, bt);
-                    if (point ? flat : unturned && !iflat && l.flat) {
+                    if (!point && !line && flat && chosen >= 0) box = fittedBox(fit, chosen);
+                    else if (point ? flat : unturned && !iflat && l.flat) {
                         // The box lies on the ground also for an icon that `icon-pitch-alignment` stands up (#2461): the box at the
-                        // point, turned by `icon-rotate`, has its size on the ground (`flatSize`) and goes through the ground at the
-                        // anchor, so it is lower on a tilted map. It turns with the map when `text-rotation-alignment` is `map`.
-                        // (The offset of the box from the anchor is turned by `icon-rotate` alone: the frame on the ground has the bearing.
-                        // The padding is added on the ground before the turn, as at a point.)
-                        const [pt, pr, pb, pl] = ic.padding, g = flatSize(tr, depth) / k, w0 = iw * g + pl + pr, h0 = ih * g + pt + pb;
-                        const ux = held.bx - cx, uy = held.by - cy, bc = Math.cos(base), bs = Math.sin(base);
-                        // (Along a line the offset of `held` is turned by `base` too, and is turned back here.)
-                        const vx = point ? dx * c - dy * sn : ux * bc + uy * bs, vy = point ? dx * sn + dy * c : uy * bc - ux * bs;
-                        const ox = vx * g + ((pr - pl) * c - (pb - pt) * sn) / 2, oy = vy * g + ((pr - pl) * sn + (pb - pt) * c) / 2;
-                        const [f, px, py] = frameAt(groundFrame(tr, it, l.x, l.y, ax, ay, l.upright ? -north : 0), ox, oy);
-                        box = quadBox(f, cx + px, cy + py, w0 * Math.abs(c) + h0 * Math.abs(sn), w0 * Math.abs(sn) + h0 * Math.abs(c), 0);
+                        // point has its size on the ground (`flatSize`), so it is lower on a tilted map (see `groundBox`).
+                        // (Along a line the offset of `held` is turned by `base` and `icon-rotate`, and is turned back here.)
+                        const g = flatSize(tr, depth) / k, ux = held.bx - cx, uy = held.by - cy, bc = Math.cos(base + rot), bs = Math.sin(base + rot);
+                        box = groundBox(iw * g, ih * g, (point ? dx : ux * bc + uy * bs) * g, (point ? dy : uy * bc - ux * bs) * g);
                     }
                     if (ic.overlap || !grid.hits(...box)) {
                         iconBox = box;
