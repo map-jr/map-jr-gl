@@ -159,3 +159,13 @@ test('the compat entry fires each error once, with the place and the text, and v
     zoomCurveErrors(styles[2], new Set(), e => skipped.push(e.message), true);
     assert.deepEqual(skipped, []);
 });
+
+test('a legacy filter mixed into an expression is one console warning with the text of MapLibre GL JS, and not an error', (t) => {
+    const warned: string[] = [], errors: string[] = [], reported = new Set<string>();
+    t.mock.method(console, 'warn', (m: string) => warned.push(m));
+    const style = {sources: {g: {type: 'geojson', data: fc}}, layers: [{id: 'a', type: 'fill', source: 'g', filter: ['all', ['has', '$id'], ['==', ['get', 'b'], 1]]}]};
+    zoomCurveErrors(style, reported, e => errors.push(e.message));
+    zoomCurveErrors(style, reported, e => errors.push(e.message));
+    assert.deepEqual(errors, []);
+    assert.deepEqual(warned, ['[map-jr-gl] E21748 layers[0].filter[1]: Mixing deprecated filter syntax with expression syntax is not supported. Convert ["has","$id"] to expression syntax.']);
+});

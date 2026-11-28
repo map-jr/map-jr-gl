@@ -2633,6 +2633,14 @@ styles(): preview has "center" without "zoom", so the pictures show the view of 
 server render: the options have "center" but no "zoom", and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".
 ```
 
+## E21748
+
+`Warning` `Compat entry` `Development build only`
+
+```text
+<where>: <why>
+```
+
 ## E21846
 
 `Error` `Both entries`
