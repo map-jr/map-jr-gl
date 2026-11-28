@@ -9,6 +9,7 @@
 // 3. For a suite that reads PORT (host.mjs, interact.mjs, loading.mjs), it starts the demo server on a free port and
 //    waits until the server answers. Several agents can run suites at the same time, each with its own server.
 // 4. It runs the suite with BROWSER=chromium when BROWSER is not a browser of Playwright (the Mac sets BROWSER=open).
+//    For Chromium it uses the pinned build in .cache-pw when installed, and prints one line that names the build.
 // 5. It prints the PASS, FAIL and SKIP counts and each FAIL line, and keeps the complete output in .cache/agents/.
 // 6. It stops the server in every case. The server and the suite also end by themselves when this script ends,
 //    even when it is killed, because each of them exits when its standard input closes.
@@ -109,6 +110,12 @@ process.on('exit', stop);
 
 const env = {};
 if (!['chromium', 'firefox', 'webkit'].includes(process.env.BROWSER ?? 'chromium')) env.BROWSER = 'chromium';
+// The Chromium build (step 4): test/launch.mjs picks the pinned one under .cache-pw when installed, as CI uses.
+// Nothing is downloaded here.
+if ((env.BROWSER ?? process.env.BROWSER ?? 'chromium') === 'chromium') {
+    const {chromiumNote} = await import(path.join(root, 'test/launch.mjs'));
+    console.log(`suite.mjs: ${chromiumNote(createRequire(path.join(root, 'package.json'))('playwright').chromium)}`);
+}
 let serverLog = '';
 if (usesServer) {
     env.PORT = String(await freePort());
