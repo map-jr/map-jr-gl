@@ -68,7 +68,7 @@ const names = (text, n) => new RegExp(`#${n}(?!\\d)`).test(text ?? '');
 
 /**
  * The ready rule: a cluster is ready when no open pull request names it (title or body) and no open pull request
- * changes one of its files. `prs` are `{title, body, files}`; the result is the clusters with `ready` and `why`.
+ * changes one of its files, and no older ready cluster has one of its files. `prs` are `{title, body, files}`; the result is the clusters with `ready` and `why`.
  */
 export function readyClusters(clusters, prs) {
     return clusters.map(c => {
@@ -76,7 +76,11 @@ export function readyClusters(clusters, prs) {
         const touching = prs.filter(p => c.files.some(f => p.files.includes(f))).map(p => p.number);
         const why = naming.length ? `named by #${naming.join(', #')}` : touching.length ? `files changed by #${touching.join(', #')}` : '';
         return {...c, ready: !why, why};
-    }).sort((a, b) => a.created.localeCompare(b.created));
+    }).sort((a, b) => a.created.localeCompare(b.created)).map((c, i, all) => {
+        // Clusters that change the same file go one after the other: the older ready one goes first.
+        const before = c.ready && all.slice(0, i).find(o => o.ready && o.files.some(f => c.files.includes(f)));
+        return before ? {...c, ready: false, why: `shares files with #${before.number}`} : c;
+    });
 }
 
 /** The share of CI over all coordinators from the body of the coordination issue, else 8. */

@@ -97,7 +97,8 @@ Each round does these steps in order:
    that it put into the queue. A round that changed nothing does not write to #2255.
 
 The session then stops. It does not wait for CI or for a worker: the next round reads their results.
-A cluster is ready when no open pull request names it and no open pull request changes a file of its `**Where:**`;
+A cluster is ready when no open pull request names it, no open pull request changes a file of its `**Where:**`, and
+no older ready cluster has one of its files;
 the share of CI is the number of pull requests in CI that #2255 gives (eight when it gives none), minus the open pull
 requests.
 

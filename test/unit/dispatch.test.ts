@@ -58,6 +58,15 @@ test('the ready rule holds a cluster that a pull request names or whose files it
     assert.equal(r[2].why, 'files changed by #2');
 });
 
+test('of two ready clusters that change the same file, only the older one is ready', () => {
+    const r = readyClusters([
+        {number: 2, created: '2026-11-28T02:00:00Z', files: ['src/terrain.ts', 'src/b.ts']},
+        {number: 1, created: '2026-11-28T01:00:00Z', files: ['src/a.ts', 'src/terrain.ts']},
+    ], []);
+    assert.deepEqual(r.map((c: {ready: boolean}) => c.ready), [true, false]);
+    assert.equal(r[1].why, 'shares files with #1');
+});
+
 test('the share of CI is read from the coordination issue, else 8', () => {
     assert.equal(ciShare('Keep about six pull requests in CI at once.'), 6);
     assert.equal(ciShare('no number here'), 8);
