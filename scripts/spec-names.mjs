@@ -9,7 +9,7 @@
  * @returns `[start, end, text]` for each edit, in the order of `code`; the last one inserts the loop.
  */
 export function specNames(code) {
-    const start = code.indexOf('\nexport const SPEC'), end = code.indexOf('\n};\n', start);
+    const start = code.indexOf('\nexport const SPEC'), end = code.slice(start).search(/\n};\r?\n/) + start;
     if (start < 0 || end < 0) throw new Error('scripts/spec-names.mjs: src/style.ts has no "export const SPEC = {" that ends with a line "};".');
     const edits = [];
     let type = null;
