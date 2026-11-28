@@ -24,6 +24,8 @@ export type Mat = [number, number, number, number, number, number];
 export type LngLatLike = readonly number[] | {lng: number; lat: number} | {lon: number; lat: number};
 
 export interface TileID { z: number; x: number; y: number; w: number; key: string }
+/** The order of MapLibre GL JS for the tiles of a source in which symbols are placed and drawn: the deepest level first, then world copy, x and y (#2511). */
+export const tileOrder = (a: {id: TileID; tile: {z?: number}}, b: typeof a) => (b.tile.z ?? b.id.z) - (a.tile.z ?? a.id.z) || a.id.w - b.id.w || a.id.x - b.id.x || a.id.y - b.id.y;
 
 /** With 3D terrain, heights are kept on the CPU as one grid of this many samples a side per elevation tile. */
 export const HEIGHT_GRID = 256;

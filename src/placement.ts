@@ -1,4 +1,4 @@
-import {type Mat, type Transform, type TileID, EXTENT} from './geo.ts';
+import {type Mat, type Transform, type TileID, EXTENT, tileOrder} from './geo.ts';
 import {mapTranslate, type CompiledLayer, type SpriteIcon} from './style.ts';
 import {anchors as lineAnchors, justification, type LabelSrc} from './tile.ts';
 import {BASELINE, EM, type Shaped, type Shaper} from './text.ts';
@@ -517,7 +517,7 @@ export function placeLabels(
     const out: Placed[] = [], seen = new SameText(), far = tr.depthRange()[1];
     // The tiles are placed in the order of MapLibre GL JS: the deepest level first, then by world copy, x and y. Where
     // the labels of two tiles collide, the same one wins (#2511). (The tiles of the view come nearest first.)
-    items = [...items].sort((a, b) => (b.tile.z ?? b.id.z) - (a.tile.z ?? a.id.z) || a.id.w - b.id.w || a.id.x - b.id.x || a.id.y - b.id.y);
+    items = [...items].sort(tileOrder);
     let itemNo = 0;
     const cover = new Map<number, TileID[]>(), keys = new Map<string, number>();
     const twins = new Map<string, {layer: string; group?: string; box: Box; x: number; y: number; justify?: number}>();
