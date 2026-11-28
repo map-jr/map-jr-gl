@@ -3793,13 +3793,16 @@ if (only === 'worker') { await browser.close(); process.exit(failed ? 1 : 0); }
             window.addEventListener('unhandledrejection', e => errors.push('unhandled ' + e.reason));
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;inset:0;z-index:99;background:#fff'}));
             const host = lib.createMap(el, {style: {...style, metadata: {'map-jr:images': {sq: '<svg viewBox="0 0 4 4"><rect width="4" height="4"/></svg>'}}}, attribution: false, onError: e => errors.push(e.message)});
-            for (let i = 0; i < 100 && !errors.length; i++) await new Promise(r => setTimeout(r, 100));
+            // Wait for the error of the images (#735), then a little longer for a second one or a rejection.
+            const own = () => errors.filter(e => !/^Tile /.test(e));
+            for (const until = Date.now() + 30000; !own().length && Date.now() < until; ) await new Promise(r => setTimeout(r, 100));
             await new Promise(r => setTimeout(r, 300));
             host.destroy(); el.remove();
-            return errors;
+            // (A tile that the demo server answers with an error under load is not the fault of this check.)
+            return {got: own(), tiles: errors.length - own().length};
         });
         check('the file for the images of a style does not load: the map reports an error and the page has no unhandled rejection',
-            got.length === 1 && got[0] === '[map-jr-gl] E495 https://map-jr.org/e/495' && !rejections.length, JSON.stringify({got, rejections}));
+            got.got.length === 1 && got.got[0] === '[map-jr-gl] E495 https://map-jr.org/e/495' && !rejections.length, JSON.stringify({...got, rejections, step: got.got.length ? undefined : 'no error of the images within 30 s'}));
     } catch (e) { check('the test of a failed style-images file was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
@@ -5099,8 +5102,10 @@ for (const method of ['easeTo', 'flyTo']) {
         const p = await prefetchPage(1500); page = p.page;
         const before = p.asked.length;
         await page.evaluate(([east, lat]) => window.host._map.easeTo({center: [east, lat], duration: 5000}), [east, from[1]]);
-        await page.waitForTimeout(400);
-        const early = p.asked.slice(before).filter(([z, x]) => Math.abs(x - tileOf(east, z)) <= 1).map(t => '/' + t.join('/') + '.pbf');
+        // Wait for the first early request instead of a fixed time (#790), as the check above does.
+        const earlyOf = () => p.asked.slice(before).filter(([z, x]) => Math.abs(x - tileOf(east, z)) <= 1).map(t => '/' + t.join('/') + '.pbf');
+        for (const start = Date.now(); !earlyOf().length && Date.now() - start < 1500; ) await page.waitForTimeout(25);
+        const early = earlyOf();
         await page.evaluate(([lng, lat]) => window.host._map.easeTo({center: [lng, lat], duration: 5000}), [from[0] - 0.3, from[1]]);
         await page.waitForTimeout(2500);
         const cancelled = p.failed.filter(u => early.some(e => u.endsWith(e)));

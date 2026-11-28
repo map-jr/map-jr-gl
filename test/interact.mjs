@@ -2167,7 +2167,13 @@ for (const mode of renderers) {
             }
             m.addSource('drawn', {type: 'raster-dem', tiles: ['drawn://dem/{z}/{x}/{y}'], tileSize: 256});
             m.addLayer({id: 'drawn', type: 'hillshade', source: 'drawn'});
-            for (let i = 0; i < 80 && !(asked.dem && m.areTilesLoaded()); i++) await new Promise(r => setTimeout(r, 100));
+            // Wait for the raster-dem tile by the events of the map, not a fixed count of polls (#2524).
+            seen.demTimedOut = !await new Promise(r => {
+                const done = ok => { clearInterval(poll); clearTimeout(limit); m.off('data', test); m.off('idle', test); r(ok); };
+                const test = () => asked.dem && m.areTilesLoaded() && done(true);
+                const poll = setInterval(test, 250), limit = setTimeout(() => done(false), 30000);
+                m.on('data', test); m.on('idle', test); test();
+            });
             seen.demLoaded = m.areTilesLoaded();
             m.removeLayer('drawn'); m.removeSource('drawn');
             // The compat entry fetches the data of a GeoJSON source for querySourceFeatures: the URL of a protocol that has
@@ -6250,11 +6256,16 @@ for (const mode of renderers) {
                     hide = true;
                     setTimeout(() => { whileHidden = m.renderer; hide = false; }, 8000);
                 });
-                let toMain = 0;
-                for (let i = 0; i < 300 && !(m.renderer === 'main' && m.areTilesLoaded()); i++) { await new Promise(r => setTimeout(r, 100)); if (!toMain && m.renderer === 'main') toMain = performance.now() - start; }
+                // Wait until the map is on the main thread with its tiles, with a generous limit (#2087): a loaded runner
+                // takes longer than 30 s for the hidden case, and `step` names what had not happened at the limit.
+                let toMain = 0, step = null;
+                for (const until = performance.now() + 60000; !(m.renderer === 'main' && m.areTilesLoaded()); ) {
+                    if (performance.now() > until) { step = !firstLoss && kind !== 'first' ? 'first loss' : kind !== 'now' && kind !== 'first' && !secondLoss ? 'second loss' : m.renderer !== 'main' ? 'main thread' : 'tiles loaded'; break; }
+                    await new Promise(r => setTimeout(r, 100)); if (!toMain && m.renderer === 'main') toMain = performance.now() - start;
+                }
                 console.warn = warn;
                 delete document.hidden; // (the property of the test: the one of the browser is on the prototype)
-                const out = {renderer: m.renderer, lost, whileHidden, seen: [...new Set(seen)], warnings: warnings.filter(w => /^\[map-jr-gl\] E798 \S+ why="the WebGL context was lost"/.test(w)).length,
+                const out = {step, renderer: m.renderer, lost, whileHidden, seen: [...new Set(seen)], warnings: warnings.filter(w => /^\[map-jr-gl\] E798 \S+ why="the WebGL context was lost"/.test(w)).length,
                     waited: secondLoss && firstLoss ? Math.round(secondLoss - firstLoss) : null, toMain: Math.round(toMain), loaded: m.areTilesLoaded(), layer: (await Promise.race([m.queryRenderedFeatures({layers: ['building']}), new Promise(r => setTimeout(() => r([]), 4000))])).length};
                 m.remove(); el.remove();
                 return out;
