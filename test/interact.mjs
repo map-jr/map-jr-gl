@@ -152,28 +152,31 @@ for (const mode of renderers) {
     // (`toBlob` waits for `idle`, so a screenshot of the page reads the colour in the middle.)
     const transitions = await (async () => {
         const red = async () => page.evaluate(async png => { const bmp = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: 1, height: 1}).getContext('2d'); c.drawImage(bmp, 0, 0); return c.getImageData(0, 0, 1, 1).data[0]; }, (await page.screenshot({clip: {x: 50, y: 40, width: 1, height: 1}})).toString('base64'));
-        const wait = ms => new Promise(r => setTimeout(r, ms)), idle = () => page.evaluate(() => new Promise(r => window.transitionMap.once('idle', r))), out = {};
+        const wait = ms => new Promise(r => setTimeout(r, ms)), out = {};
+        // (`idled` is set by the first `idle` after a change. The listener goes on with the change, because a slow machine can
+        // finish the transition before the next step of the check, and a listener added after that `idle` waits forever; #2138.)
+        const idle = what => page.waitForFunction(() => window.idled, null, {polling: 50, timeout: 20000}).catch(() => { throw new Error(`no idle within 20 s after ${what}`); });
         await page.evaluate(async renderer => {
             const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
             const style = window.transitionStyle = c => ({version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': c, 'background-color-transition': {duration: 3000, delay: 0}}}]});
             const el = window.transitionEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:100px;height:80px;z-index:99999'}));
             const m = window.transitionMap = new mod.Map({container: el, style: style('#000'), center: [0, 0], zoom: 1, renderer, attributionControl: false});
-            await new Promise(r => m.once('idle', r));
+            if (!await new Promise(r => { m.once('idle', () => r(true)); setTimeout(() => r(false), 20000); })) throw new Error('no first idle within 20 s');
         }, mode);
         await wait(100);
         out.start = await red();
         await page.evaluate(() => { window.idled = false; window.transitionMap.setPaintProperty('bg', 'background-color', '#f00'); window.transitionMap.once('idle', () => window.idled = true); });
         await wait(1500);
         out.middle = await red(); out.idleInMiddle = await page.evaluate(() => window.idled);
-        await idle(); await wait(100); out.end = await red();
-        await page.evaluate(() => window.transitionMap.setStyle(window.transitionStyle('#000')));
+        await idle('setPaintProperty'); await wait(100); out.end = await red();
+        await page.evaluate(() => { window.idled = false; window.transitionMap.setStyle(window.transitionStyle('#000')); window.transitionMap.once('idle', () => window.idled = true); });
         await wait(1500); out.diffMiddle = await red();
-        await idle();
+        await idle('setStyle with diff');
         await page.evaluate(() => window.transitionMap.setStyle(window.transitionStyle('#f00'), {diff: false}));
         await wait(300); out.instant = await red();
         await page.evaluate(() => { window.transitionMap.remove(); window.transitionEl.remove(); });
         return out;
-    })().catch(e => ({error: String(e)}));
+    })().catch(async e => { await page.evaluate(() => { window.transitionMap?.remove(); window.transitionEl?.remove(); }).catch(() => {}); return {error: String(e)}; });
     check(`[${mode}] paint transitions: setPaintProperty and setStyle with diff move a colour over its transition, idle waits, diff: false is at once (#960)`,
         transitions.start === 0 && transitions.middle > 40 && transitions.middle < 215 && !transitions.idleInMiddle && transitions.end === 255 && transitions.diffMiddle > 40 && transitions.diffMiddle < 215 && transitions.instant === 255, JSON.stringify(transitions));
 
