@@ -112,6 +112,11 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   one branch. List each issue in the prompt with its own scope line; the worker makes one commit for each issue, and
   the body of the pull request says `Fixes #N` for each. Give a bundle only issues that triage found to be a few lines
   each, so that one slow issue does not hold the others.
+- **A cluster issue** (one root cause and its list "Symptoms"; #2578) is one worker and one branch. Name the cluster
+  issue in the prompt, and the worker reads each symptom issue. Give a cluster only causes that triage confirmed
+  (#2581), and give the clusters that change the same file to one worker after the other. The pull request closes
+  the cluster issue and each symptom that a test shows fixed; check the list after the merge as for "Left of the
+  issue".
 - **A row that triage marked "read"** gets one more line in the prompt of its worker: reproduce the fault on `main`
   before you build, and report another cause if the fault does not reproduce as the issue says.
 - Do not copy the issue or the rules into the prompt. The worker reads the issue, and `CLAUDE.md` is in its context.
@@ -126,6 +131,7 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   | A check of one claim on `main` (does it reproduce, what does MapLibre GL JS do) | Haiku |
   | Triage, which must run a command for each premise | Opus |
   | A worker on an issue marked `unverified` or of size L, or on drawing, placement or shaders | Opus |
+  | A worker on a cluster issue | Opus |
   | The coordinator | Opus |
 
   Read each finding of a Sonnet review, not only its verdict: one Sonnet review called a real fault "minor".
@@ -188,6 +194,7 @@ Keep out of: `src/compat-map.ts` (another worker, #7).
   fixed its four findings for about 35,000 tokens, where a new worker costs about 100,000.
 - **Turn each "found" line of a report into its own issue** at once, in the form of "Issues" in `CLAUDE.md`. Search
   for an issue of the same fault first (`gh issue list --search`). Do not add a fault to another issue as a comment.
+  A P3 line "Symptom of #N:" is the exception: add it as one line to the list "Symptoms" of the cluster issue #N.
   When an issue already has the same fault, add the new evidence to it instead: a line under "Sightings" for a check
   that fails in some runs, or a dated comment with what was measured.
 - **Check your own premise before you send a worker back.** On 2026-11-17 a pull request (#801) went back with the

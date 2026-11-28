@@ -8,6 +8,8 @@ writing); this brief has the steps.
 1. Read the issue: `gh api repos/map-jr/map-jr-gl/issues/N` (and `…/N/comments`), or `mcp__github__issue_read`
    where `gh` is missing. Start at the files and lines that your prompt names; do not survey the repository. Check
    that the fault is still on `origin/main`. If it is fixed, change nothing and report the commit.
+   For a cluster issue (one root cause with a list "Symptoms"), read each symptom issue too. Find the shared cause
+   before you build, and fix the cause rather than each symptom on its own.
    For an issue with the label `unverified`, reproduce the fault before you build, and read what MapLibre GL JS does
    in `node_modules/maplibre-gl/dist/maplibre-gl-dev.mjs`: an issue can name a property that MapLibre GL JS declares
    and never reads (#1692, #1695), or the reverse of the fault (#1735). Report another cause; do not build to the text.
@@ -63,7 +65,9 @@ writing); this brief has the steps.
    session instructions give. In a cloud session use `gh api repos/map-jr/map-jr-gl/pulls -f title=… -f head=<branch>
    -f base=main -F body=@file`, because `gh pr create` needs GraphQL, which is blocked there. Elsewhere
    `gh pr create --repo map-jr/map-jr-gl --base main` works. Write `Part of #N` only when
-   your prompt says that the issue is a tracking issue. Then stop.
+   your prompt says that the issue is a tracking issue. For a cluster issue, the body says `Fixes #N` for the
+   cluster issue and for each symptom issue that a test of the pull request shows fixed, and it names each symptom
+   that the fix leaves. Then stop.
    The coordinator may send you a CI failure to fix on the same branch.
 
 ## Rules
@@ -133,5 +137,7 @@ writing); this brief has the steps.
 - Size: <bytes gzip of each built file that changed, before and after, from `pnpm test:size`>
 - Not checked: <what>
 - Needs owner: <no | yes, because …>
-- Left of the issue: <the text that the body of the issue should have after the merge, or "nothing">
-- Found: <faults seen elsewhere, one line each: a title of about 80 characters | `file:line` | "ran" or "read">
+- Left of the issue: <the text that the body of the issue should have after the merge, or "nothing"; for a cluster
+  issue, each symptom that the fix does not resolve, with its cause>
+- Found: <faults seen elsewhere, one line each: a title of about 80 characters | `file:line` | "ran" or "read">. A P3
+  symptom of a cause that has a cluster issue starts with "Symptom of #N:".
