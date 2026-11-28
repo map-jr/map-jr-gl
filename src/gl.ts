@@ -843,7 +843,7 @@ export class GLRenderer {
             let count = 0, scalar = false, edgeVao: WebGLVertexArrayObject | undefined;
             if (b.type === 'fill') {
                 vertices = b.pos.length / 2;
-                attr(0, b.pos, 2, gl.SHORT);
+                attr(0, b.pos, 2, b.pos instanceof Float32Array ? gl.FLOAT : gl.SHORT);
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
                 index(b.idx);
                 count = b.idx.length;
@@ -854,7 +854,7 @@ export class GLRenderer {
                     gl.bindVertexArray(edgeVao);
                     gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
                     gl.enableVertexAttribArray(0);
-                    gl.vertexAttribPointer(0, 2, gl.SHORT, false, 0, 0);
+                    gl.vertexAttribPointer(0, 2, b.pos instanceof Float32Array ? gl.FLOAT : gl.SHORT, false, 0, 0);
                     if (b.color) { gl.bindBuffer(gl.ARRAY_BUFFER, colorBuf); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.UNSIGNED_BYTE, true, 0, 0); }
                     index(b.edges);
                     gl.bindVertexArray(vao);
