@@ -2,7 +2,7 @@
   "label": "control characters and empty lines",
   "decision": "later",
   "issue": 1794,
-  "reason": "The line breaks (#1794) and right-to-left order per line (#1795) differ. The box for U+001C and the dropped empty line are fixed (#2594).",,
+  "reason": "The line breaks (#1794) and right-to-left order per line (#1795) differ. The box for U+001C and the dropped empty line are fixed (#2594).",
   "tests": [
     "text-arabic/multi-paragraph"
   ]

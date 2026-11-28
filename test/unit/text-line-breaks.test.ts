@@ -44,3 +44,8 @@ test('control characters are not shaped (#2594, #1793)', () => {
     assert.deepEqual(lines('ab\x1Ccd', 50), ['abcd']);
     assert.deepEqual(lines('a\x00b\x7Fc\nd', 50), ['abc', 'd']);
 });
+
+test('a tab stays whitespace and allows a break, and CR LF adds no line (#2594)', () => {
+    assert.deepEqual(lines('Aaaaaaaa\tBbbbbbbb', 5), ['Aaaaaaaa', 'Bbbbbbbb']);
+    assert.deepEqual(lines('one\r\ntwo', 50), ['one', 'two']);
+});
