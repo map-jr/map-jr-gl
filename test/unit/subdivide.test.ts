@@ -51,7 +51,10 @@ test('globe: a tile without globe is byte for byte what it was before the cut ex
     // gives a building no wall along the edge of the buffer of the tile, and by #2287, which draws no building that lies
     // wholly in the buffer, and by #2464, which keeps a smoothing edge of a fill that touches the tile border, and by
     // #1806, which starts the line distance of a polygon ring with its closing segment.)
-    const h = createHash('sha256'), flat = tile();
+    // (The hash is of the batches before `cellsOf` sorts their triangles by cell and adds `cells`: test/unit/cells.test.ts
+    // checks that the tile has the same triangles after that step.)
+    const h = createHash('sha256'), ir = buildTile(bytes, 14, layers, false), flat = {layers: Object.fromEntries(Object.entries(ir.layers).map(([id, b]) => [id, tessellate(b) as any]))};
+    assert.deepEqual(Object.keys(flat.layers).sort(), Object.keys(tile().layers).sort());
     // (A field that is undefined carries no data, and is left out: #2075 gave a line and a building such fields. The
     // code of main before #2075 gives the same hash.)
     for (const id of Object.keys(flat.layers).sort()) for (const [k, v] of Object.entries(flat.layers[id]).sort()) {

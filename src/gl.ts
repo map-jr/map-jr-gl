@@ -3,7 +3,7 @@ import {withFilter, mapTranslate, type CompiledLayer, type Light} from './style.
 import {compileProp, type Prop} from './expr.ts';
 import type {Sky} from './resolve.ts';
 import {LOSE_CONTEXT} from './gl-names.ts';
-import {LINE_VERTEX, WALL_OTHER, WALL_TOP, patternKey, type GLBatch, type IconBatch, type LabelSrc, type TileGL} from './tile.ts';
+import {CELL, CELL_HEAD, LINE_VERTEX, WALL_OTHER, WALL_TOP, patternKey, type GLBatch, type IconBatch, type LabelSrc, type TileGL} from './tile.ts';
 import type {Placed, RenderItem} from './placement.ts';
 import {demUnpack, type DemEncoding} from './elevation.ts';
 import {lineMiddle, BASELINE, EM, SDF_BUFFER, SDF_RADIUS, type GlyphAtlas} from './text.ts';
@@ -540,6 +540,51 @@ export const SHADERS: Partial<Record<ProgramName, string[]>> & typeof BUILTIN = 
 SHADERS.lineStep = [SHADERS.line[0], '#define STEPS\n' + SHADERS.line[1]];
 
 /** `u` is empty until the program is first used: see `link`. */
+/**
+ * The five sides of the view for `hidden`, from the matrix `m` that takes tile units to clip space: for each side, the
+ * numbers a, b, c, d of a function a x + b y + c z + d that is negative where a point is past that side (left, right,
+ * below, above, and behind the camera). `gx` and `gy` widen the view by a few pixels, for the rounding of the numbers.
+ */
+export function sidesOf(m: ArrayLike<number>, gx: number, gy: number, out: Float64Array) {
+    for (let i = 0; i < 4; i++) {
+        const w = m[i * 4 + 3], x = m[i * 4], y = m[i * 4 + 1];
+        out[i] = x + gx * w; out[4 + i] = gx * w - x; out[8 + i] = y + gy * w; out[12 + i] = gy * w - y; out[16 + i] = w;
+    }
+}
+/**
+ * Whether a box in tile units (x0, y0 to x1, y1 on the ground, and up to the height `top`) is outside the view: all of
+ * the box is past one of the `sides`. (The largest value of a side's function on the box is at one of its corners.)
+ */
+export function hidden(sides: Float64Array, x0: number, y0: number, x1: number, y1: number, top: number): boolean {
+    for (let i = 0; i < 20; i += 4) {
+        const a = sides[i], b = sides[i + 1], c = sides[i + 2];
+        if (a * (a > 0 ? x1 : x0) + b * (b > 0 ? y1 : y0) + (c > 0 ? c * top : 0) + sides[i + 3] < 0) return true;
+    }
+    return false;
+}
+/** Two ranges of indices that are this near each other are one draw call: the indices between them cost less than a call. */
+const CELL_GAP = 1536;
+/**
+ * The ranges of the indices of a batch that are in the view, from its cells (`cellsOf` in tile.ts): the first index and
+ * the end of each range. `sides` is the view in the units of the tile (`sidesOf`); `reach` is how far the program moves
+ * a vertex on the ground, in tile units (the width of a line); `top` is the height of the batch when the layer gives
+ * it (`Batch.lift`), and else each cell has its own.
+ */
+export function cellRanges(cells: Float32Array, sides: Float64Array, reach = 0, top?: number): number[] {
+    const r: number[] = [];
+    for (let i = CELL_HEAD; i < cells.length; i += CELL) {
+        if (hidden(sides, cells[i + 2] - reach, cells[i + 3] - reach, cells[i + 4] + reach, cells[i + 5] + reach, top ?? cells[i + 6])) continue;
+        if (r.length && cells[i] - r[r.length - 1] <= CELL_GAP) r[r.length - 1] = cells[i] + cells[i + 1]; else r.push(cells[i], cells[i] + cells[i + 1]);
+    }
+    return r;
+}
+/**
+ * How far the line program moves a vertex from its place on the line, in pixels, at most: half the width (with the
+ * gap, and the soft edge) along the longest direction of a vertex (the first number of `cells`), and three times the
+ * offset along it. (`line-blur` fades the line inside this width.)
+ */
+export const lineReach = (cells: Float32Array, width: number, gap: number, offset: number) => cells[0] * ((gap > 0 ? gap / 2 + width : width / 2) + 1 + 3 * Math.abs(offset)) + 2;
+
 /** The matrix of a tile moved by (tx, ty) pixels along the axes of the map (`*-translate`; see `mapTranslate`). */
 const moveTile = (it: RenderItem<GLTile>, tx: number, ty: number) => {
     if (!tx && !ty) return it.matrix4;
@@ -570,6 +615,7 @@ interface GLBuffers {
     type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; /** A circle with a buffer of the stroke color (1) or of the stroke width and blur (2) for each feature. */ stroke?: number; bufs: WebGLBuffer[];
     edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string; /** See `Batch.dash`. */ dash?: number[]; /** See `Batch.lift`. */ lift?: boolean;
     /** A heatmap on a globe below zoom 6: each point is a grid of corners in sevenths (see `tessellate`). */ grid?: boolean;
+    /** See `cellsOf` in tile.ts. */ cells?: Float32Array;
 }
 export interface GLTile {
     /** Distinguishes this tile's contents from any other's, including an earlier build of the same tile. */
@@ -893,7 +939,7 @@ export class GLRenderer {
                 index(b.idx);
                 count = b.idx.length;
             }
-            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat, dash: b.dash, grid: b.type === 'circle' && b.grid, lift: b.type === 'extrusion' && b.lift};
+            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat, dash: b.dash, cells: b.cells, grid: b.type === 'circle' && b.grid, lift: b.type === 'extrusion' && b.lift};
         }
         let icons: Record<string, IconBuffers> | undefined;
         for (const id in t.icons) {
@@ -1107,14 +1153,27 @@ export class GLRenderer {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
 
+    /** Frees the buffers of a batch. */
+    private freeBatch(b: GLBuffers) {
+        this.gl.deleteVertexArray(b.vao);
+        if (b.edgeVao) this.gl.deleteVertexArray(b.edgeVao);
+        for (const buf of b.bufs) this.gl.deleteBuffer(buf);
+    }
+
+    /**
+     * Puts the batches of `tile`, a build of the layers `ids` alone, in place of those that the tile `t` has for these
+     * layers (a layer can have several: see `patternKey`). The other batches, the labels and the icons of `t` stay.
+     */
+    replaceBatches(t: GLTile, ids: string[], tile: TileGL) {
+        const fresh = this.createTile({...tile, labels: {}, icons: undefined}).batches;
+        for (const id of ids) for (let k = 0, key; t.batches[key = patternKey(id, k)]; k++) { this.freeBatch(t.batches[key]); delete t.batches[key]; }
+        Object.assign(t.batches, fresh);
+    }
+
     destroyTile(t: GLTile) {
         if (t.tex) this.gl.deleteTexture(t.tex);
         if (t.raw) this.gl.deleteTexture(t.raw);
-        for (const b of Object.values(t.batches)) {
-            this.gl.deleteVertexArray(b.vao);
-            if (b.edgeVao) this.gl.deleteVertexArray(b.edgeVao);
-            for (const buf of b.bufs) this.gl.deleteBuffer(buf);
-        }
+        for (const b of Object.values(t.batches)) this.freeBatch(b);
         for (const b of Object.values(t.icons ?? {})) { this.gl.deleteVertexArray(b.vao); for (const buf of b.bufs) this.gl.deleteBuffer(buf); }
     }
 
@@ -1207,6 +1266,24 @@ export class GLRenderer {
             for (let k = 0, b; (b = it.tile.batches[patternKey(id, k)]); k++) r.push(b);
             return r;
         };
+        // The ranges of the indices of a batch that are in the view (see `cellsOf` in tile.ts): the first index and the end
+        // of each range, or null for the whole batch. `m` is the matrix of the tile as the program has it; `reach` is how
+        // far the program moves a vertex on the ground, in tile units (the width of a line); `top` is the height of the
+        // batch when the layer gives it (`Batch.lift`). A batch with no range is not drawn, and needs no state. On the
+        // globe and on 3D terrain a vertex is not where the matrix alone puts it, so the whole batch is drawn.
+        const cull = !this.globe && !s.terrain, gx = 1 + 8 / target[0], gy = 1 + 8 / target[1];
+        const inView = (b: GLBuffers, m: ArrayLike<number>, reach = 0, top?: number): number[] | null => {
+            if (!b.cells || !cull) return null;
+            sidesOf(m, gx, gy, this.sides);
+            return cellRanges(b.cells, this.sides, reach, top);
+        };
+        const drawRanges = (b: GLBuffers, r: number[] | null) => {
+            if (!r) return gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
+            const size = b.indexType === gl.UNSIGNED_SHORT ? 2 : 4;
+            for (let i = 0; i < r.length; i += 2) gl.drawElements(gl.TRIANGLES, r[i + 1] - r[i], b.indexType, r[i] * size);
+        };
+        // (The width, the gap and the offset of the layer, as the uniforms of the line program get them below.)
+        const reachOf = (L: CompiledLayer, b: GLBuffers) => b.cells ? lineReach(b.cells, Math.max(0, L.p.width.dd ? b.cells[1] : L.p.width.eval(zoom)), L.p.gap.dd ? 0 : Math.max(0, L.p.gap.eval(zoom)), L.p.offset.dd ? 0 : L.p.offset.eval(zoom)) : 0;
 
         for (const L of only ? [only] : s.layers.slice(from, to)) {
             if (!L.visible || zoom < L.minzoom || zoom >= L.maxzoom || L.type === 'symbol') continue;
@@ -1350,10 +1427,16 @@ export class GLRenderer {
             let screen: Float32Array | number[] | undefined;
             // On the globe a tile of the first or the last row also owns the cap of its pole, as the tile mask of MapLibre GL
             // JS does (`extendToNorthPole`): a line that is clamped to 85.05° keeps the half of its width past the edge (#2307).
-            const clipTo = (u: Record<string, WebGLUniformLocation>, it: RenderItem<GLTile>) => {
-                gl.uniformMatrix3fv(u.u_screen, false, screen ??= this.globe ? NO_SCREEN : screenToTile(items![0].matrix4, target));
-                const [x0, y0, x1, y1] = it.clip, {y, z} = it.id, sx = translated ? tx / items![0].scale : 0, sy = translated ? ty / items![0].scale : 0;
-                gl.uniform4fv(u.u_clip, this.globe ? [x0, y || y0 ? y0 : -1e6, x1, y < 2 ** z - 1 || y1 < EXTENT ? y1 : 1e6] : clipIn(items![0].id, it.id, it.clip).map((v, i) => v + (i % 2 ? sy : sx)));
+            // (The matrix of the screen is the same for each tile of the layer: a program gets it one time, and again with
+            // `again`, after `pattern` has set another. The numbers of the clip go through one array: a frame has
+            // hundreds of these calls, and each made two lists.)
+            let screenOf: unknown;
+            const clipTo = (u: Record<string, WebGLUniformLocation>, it: RenderItem<GLTile>, again?: boolean) => {
+                if (again || screenOf !== u) { gl.uniformMatrix3fv(u.u_screen, false, screen ??= this.globe ? NO_SCREEN : screenToTile(items![0].matrix4, target)); screenOf = u; }
+                const [x0, y0, x1, y1] = it.clip, {y, z} = it.id, sx = translated ? tx / items![0].scale : 0, sy = translated ? ty / items![0].scale : 0, c = this.clip;
+                if (this.globe) { c[0] = x0; c[1] = y || y0 ? y0 : -1e6; c[2] = x1; c[3] = y < 2 ** z - 1 || y1 < EXTENT ? y1 : 1e6; }
+                else { const own = clipIn(items![0].id, it.id, it.clip); c[0] = own[0] + sx; c[1] = own[1] + sy; c[2] = own[2] + sx; c[3] = own[3] + sy; }
+                gl.uniform4fv(u.u_clip, c);
             };
             const patterned = L.type === 'fill' && !!(L.p.pattern.dd || L.p.pattern.eval(zoom));
             if (patterned) {
@@ -1364,14 +1447,16 @@ export class GLRenderer {
                     if (edges && !b.edgeVao) continue;
                     // (fill-opacity is in u_fade.y; fill-color colors a distance-field image.)
                     const c = L.p.color.dd ? [1, 1, 1, 1] : L.p.color.eval(zoom);
+                    const m = moved(it), ranges = edges ? null : inView(b, m);
+                    if (ranges && !ranges.length) continue;
                     const place = pattern(b.pat ?? L.p.pattern.eval(zoom), L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom), c);
                     if (!place) continue;
                     const u = place(tilePixels(it.id));
-                    this.placeTile(u, it.id, moved(it), shift(it));
-                    clipTo(u, it);
+                    this.placeTile(u, it.id, m, shift(it));
+                    clipTo(u, it, true);
                     if (edges) gl.uniform2f(u.u_world, target[0], target[1]);
                     gl.bindVertexArray(edges ? b.edgeVao! : b.vao);
-                    gl.drawElements(edges ? gl.LINES : gl.TRIANGLES, edges ? b.edgeCount! : b.count, b.indexType, 0);
+                    if (edges) gl.drawElements(gl.LINES, b.edgeCount!, b.indexType, 0); else drawRanges(b, ranges);
                 }
                 if (own) continue;
             }
@@ -1391,8 +1476,18 @@ export class GLRenderer {
                 // (see tessellateExtrusion), so the faces that WebGL calls front faces are the ones left out.
                 gl.enable(gl.CULL_FACE); gl.cullFace(gl.FRONT);
             }
+            // (The batches of this layer that are outside the view, by the item that places them: the edge pass of a fill
+            // leaves them out too. Two copies of the world place the batches of one tile, and one copy can be in the view.)
+            let outside: Map<RenderItem<GLTile>, Set<GLBuffers>> | undefined;
+            // What the batches of the layer have set for the program in use, so that a value that is the same for each
+            // tile (the zoom part, the scale, the constants of the attributes without a buffer) goes to the GPU one time
+            // for the layer and not for each tile: these calls were most of the time of a frame on the page's thread.
+            let lastU: unknown, zt = NaN, scale = NaN, dash = NaN, cam = false, ones1 = false, ones3 = false, ones4 = false, zero6 = false, zero7 = false, ones10 = false;
             draw: for (const it of patterned ? [] : items) for (const b of parts(it, L.id)) {
-                const u = use(L.steps && b.type === 'line' ? 'lineStep' : b.type), m = moved(it), sh = shift(it);
+                // (The height of the cells of a batch whose heights the layer gives.)
+                const m = moved(it), sh = shift(it), ranges = inView(b, m, b.type === 'line' ? reachOf(L, b) / it.scale : 0, b.lift ? Math.max(hb[0], hb[1]) : undefined);
+                if (ranges && !ranges.length) { const of = (outside ??= new Map()).get(it); if (of) of.add(b); else outside.set(it, new Set([b])); continue; }
+                const u = use(L.steps && b.type === 'line' ? 'lineStep' : b.type);
                 if (extrude || b.type === 'circle' && s.terrain) this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                 if (first) {
                     first = false;
@@ -1470,27 +1565,34 @@ export class GLRenderer {
                 this.placeTile(u, it.id, m, sh);
                 if (b.type === 'fill' || b.type === 'line') clipTo(u, it); else gl.uniform4fv(u.u_clip, it.clip);
                 gl.bindVertexArray(b.vao);
-                // Attributes without a buffer read these constants, so shaders need no variants.
-                if (!b.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
-                if (!b.scalar) { gl.vertexAttrib1f(3, 1); gl.vertexAttrib1f(5, 1); }
-                if (b.type === 'circle') { if (!(b.stroke! & 1)) gl.vertexAttrib4f(4, 1, 1, 1, 1); if (!(b.stroke! & 2)) gl.vertexAttrib2f(6, 0, 0); }
+                if (u !== lastU) { lastU = u; zt = scale = dash = NaN; cam = false; }
+                // Attributes without a buffer read these constants, so shaders need no variants. (A constant stays as it
+                // is set until the layer is drawn: nothing else sets one between two batches of a layer.)
+                if (!b.color && !ones1) { gl.vertexAttrib4f(1, 1, 1, 1, 1); ones1 = true; }
+                if (!b.scalar && !ones3) { gl.vertexAttrib1f(3, 1); gl.vertexAttrib1f(5, 1); ones3 = true; }
+                if (b.type === 'circle') { if (!(b.stroke! & 1) && !ones4) { gl.vertexAttrib4f(4, 1, 1, 1, 1); ones4 = true; } if (!(b.stroke! & 2) && !zero6) { gl.vertexAttrib2f(6, 0, 0); zero6 = true; } }
                 // A number of `Batch.feat` that the batch does not have reads 0. (A custom layer can leave another value
                 // at these locations. An attribute with a buffer does not read the value.)
-                if (b.type === 'line' || b.type === 'circle') { gl.uniform1f(u.u_zt, Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z)))); for (let l = 7; l < 12; l++) gl.vertexAttrib1f(l, 0); }
-                if (b.type === 'circle' && !(b.stroke! & 1)) gl.vertexAttrib4f(10, 1, 1, 1, 1);
                 if (b.type === 'line' || b.type === 'circle') {
-                    gl.uniform1f(u.u_scale, it.scale);
-                    gl.uniform1f(u.u_cam, tr.cameraDistance);
+                    const t = Math.min(1, Math.max(0, zoom - (it.tile.z ?? it.id.z)));
+                    if (t !== zt) gl.uniform1f(u.u_zt, zt = t);
+                    if (!zero7) { for (let l = 7; l < 12; l++) gl.vertexAttrib1f(l, 0); zero7 = true; }
+                }
+                if (b.type === 'circle' && !(b.stroke! & 1) && !ones10) { gl.vertexAttrib4f(10, 1, 1, 1, 1); ones10 = true; }
+                if (b.type === 'line' || b.type === 'circle') {
+                    if (it.scale !== scale) gl.uniform1f(u.u_scale, scale = it.scale);
+                    if (!cam) { gl.uniform1f(u.u_cam, tr.cameraDistance); cam = true; }
                 }
                 if (b.type === 'line') {
                     // Dashes are sized at whole zoom levels so they stretch, rather than crawl, while zooming.
-                    gl.uniform1f(u.u_dashScale, it.scale / 2 ** (zoom - Math.floor(zoom)));
+                    const d = it.scale / 2 ** (zoom - Math.floor(zoom));
+                    if (d !== dash) gl.uniform1f(u.u_dashScale, dash = d);
                 }
                 if (extrude) {
                     gl.uniform3f(u.u_hb, +!!b.lift, hb[0], hb[1]);
                     // Depth first, color second: translucent buildings then blend once, with the nearest surface only.
                     gl.colorMask(false, false, false, false);
-                    gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
+                    drawRanges(b, ranges);
                     gl.colorMask(true, true, true, true);
                     pending.push(() => {
                         this.placeTile(u, it.id, m, sh);
@@ -1501,9 +1603,9 @@ export class GLRenderer {
                         gl.bindVertexArray(b.vao);
                         if (!b.color) gl.vertexAttrib4f(1, 1, 1, 1, 1);
                         gl.uniform3f(u.u_hb, +!!b.lift, hb[0], hb[1]);
-                        gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
+                        drawRanges(b, ranges);
                     });
-                } else gl.drawElements(gl.TRIANGLES, b.count, b.indexType, 0);
+                } else drawRanges(b, ranges);
             }
             if (L.type === 'fill' && L.p.antialias.eval(zoom) !== false) {
                 // Edge pass: the style's outline color if it has one, otherwise the fill's own color as antialiasing. As in
@@ -1511,7 +1613,7 @@ export class GLRenderer {
                 const oc = L.p.outline.eval(zoom), explicit = oc[3] > 0, op = L.p.opacity.dd ? 1 : L.p.opacity.eval(zoom);
                 const col = explicit ? [oc[0], oc[1], oc[2], oc[3] * op] : color(L);
                 for (const it of items) for (const b of parts(it, L.id)) {
-                    if (!b.edgeVao) continue;
+                    if (!b.edgeVao || outside?.get(it)?.has(b)) continue;
                     const u = use('edge');
                     gl.uniform4fv(u.u_color, col);
                     gl.uniform2f(u.u_world, target[0], target[1]);
@@ -1543,6 +1645,10 @@ export class GLRenderer {
     /** True once a fill-extrusion layer of this frame has cleared the depth buffer. */
     private extrusionDepth = false;
     private uids = 0;
+    /** The sides of the view for the tile in work (see `sidesOf`). */
+    private sides = new Float64Array(20);
+    /** The clip of the tile in work, for `u_clip`. */
+    private clip = new Float32Array(4);
     private current: Program | null = null;
     /** Selects a program, telling it the size of the view being drawn (the screen, or a terrain tile's texture). */
     private use(name: ProgramName, tr: Transform) {

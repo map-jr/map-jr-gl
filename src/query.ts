@@ -127,6 +127,7 @@ function touches(type: number, c: number[], ends: number[], px: number, py: numb
     const r2 = radius * radius, x0 = box ? box[0] - radius : 0, y0 = box ? box[1] - radius : 0, x1 = box ? box[2] + radius : 0, y1 = box ? box[3] + radius : 0;
     // For a box, "inside" asks if one corner of the box is in the polygon: that finds a polygon that contains the whole box.
     const qx = box ? box[0] : px, qy = box ? box[1] : py;
+    const lo = box ? y0 : py - radius, hi = box ? y1 : py + radius;
     let inside = false, start = 0;
     for (const end of ends) {
         if (type === 1) {
@@ -134,7 +135,11 @@ function touches(type: number, c: number[], ends: number[], px: number, py: numb
             if (box ? x >= x0 && x <= x1 && y >= y0 && y <= y1 : (x - px) ** 2 + (y - py) ** 2 <= r2) return true;
         } else {
             for (let i = start, j = type === 3 ? end - 1 : start; i < end; j = i++) {
-                const ax = c[j * 2], ay = c[j * 2 + 1], bx = c[i * 2], by = c[i * 2 + 1];
+                const ay = c[j * 2 + 1], by = c[i * 2 + 1];
+                // (A segment that is wholly above or below the question is not near it and does not cross its ray: the
+                // water of a tile has thousands of them.)
+                if (ay < lo && by < lo || ay > hi && by > hi) continue;
+                const ax = c[j * 2], bx = c[i * 2];
                 if (i !== j && (box ? segmentInBox(ax, ay, bx, by, x0, y0, x1, y1) : segmentDistSq(px, py, ax, ay, bx, by) <= r2)) return true;
                 // Even-odd crossing test over all rings handles holes and multi-polygons alike.
                 if (type === 3 && (ay > qy) !== (by > qy) && qx < (bx - ax) * (qy - ay) / (by - ay) + ax) inside = !inside;
@@ -170,34 +175,94 @@ function offsetLine(c: number[], ends: number[], d: number) {
     return out;
 }
 
-/** Finds every feature in a vector tile at (or within `radius` of) a position, or in a box. */
+/**
+ * The boxes of the features of one source layer of a decoded tile: x0, y0, x1, y1 of each feature, in tile units. A
+ * feature with no point has a box that nothing touches.
+ */
+export type TileBoxes = Record<string, {box: Float32Array; /** The geometry of the features that a question has read, by their place. */ read: ({c: number[]; ends: number[]} | undefined)[]; /** How many numbers `read` holds. */ kept: number}>;
+/**
+ * A decoded tile keeps at most this many numbers of geometry for the next questions, in all its source layers: up to
+ * about 3 megabytes for a tile, and a tile worker keeps six tiles.
+ */
+const KEPT_NUMBERS = 4e5;
+function boxesOf(features: TileLayers[string]['features']): Float32Array {
+    const out = new Float32Array(features.length * 4), c: number[] = [], ends: number[] = [];
+    for (let i = 0, o = 0; i < features.length; i++, o += 4) {
+        c.length = ends.length = 0;
+        features[i].geometry(EXTENT, c, ends);
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (let k = 0; k < c.length; k += 2) { const x = c[k], y = c[k + 1]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        out[o] = x0; out[o + 1] = y0; out[o + 2] = x1; out[o + 3] = y1;
+    }
+    return out;
+}
+
+/**
+ * Finds every feature in a vector tile at (or within `radius` of) a position, or in a box. With `boxes` (kept by the
+ * caller with the decoded tile, and filled here at the first question for a source layer), a later question reads
+ * only the features near it: the result is the same.
+ */
 /** `states` is the feature state of the source (by "sourceLayer|id"), which a size that uses `feature-state` reads. */
-export function queryTile(data: Uint8Array | TileLayers, q: TileQuery, states?: MapStates['f'][string]): FoundFeature[] {
+export function queryTile(data: Uint8Array | TileLayers, q: TileQuery, states?: MapStates['f'][string], boxes?: TileBoxes): FoundFeature[] {
     const out: FoundFeature[] = [], layers: TileLayers = data instanceof Uint8Array ? decodeVectorTile(data) : data;
+    // (The place of the question in the tile: its rectangle, or its point. A set adds its own distance.)
+    const qx0 = q.box ? q.box[0] : q.px, qy0 = q.box ? q.box[1] : q.py, qx1 = q.box ? q.box[2] : q.px, qy1 = q.box ? q.box[3] : q.py;
+    // (How many numbers of geometry the tile keeps already: see KEPT_NUMBERS.)
+    let kept = 0;
+    for (const name in boxes) kept += boxes[name].kept;
+    /** Whether the box at `o` of `b` is farther than `r` from the question. (A distance that is not a number is never far.) */
+    const far = (b: Float32Array, o: number, r: number) => b[o] > qx1 + r || b[o + 2] < qx0 - r || b[o + 1] > qy1 + r || b[o + 3] < qy0 - r;
     const n = 2 ** q.z, toLngLat = (x: number, y: number) => [lngFromMerc((q.x + x / EXTENT) / n), latFromMerc((q.y + y / EXTENT) / n)];
     // Without sets there is one question for all the data. With sets (the style layers of a rendered-features query)
     // each feature is read one time and tested for each set.
     const sets = (q.sets ?? [{layer: undefined as string | undefined, sourceLayer: undefined as string | undefined, filter: q.filter, also: undefined as unknown, radius: q.radius, ring: undefined as boolean | undefined}])
-        .map(s => ({...s, test: compileFilter(s.filter), test2: compileFilter(s.also),
-            size: 'size' in s && s.size?.scale ? {...s.size, r: compileProp(s.size.a, 'number', s.size.line ? 1 : 5), w: compileProp(s.size.b, 'number', 0), o: compileProp(s.size.o, 'number', 0)} : null}));
+        .map(s => {
+            const size = 'size' in s && s.size?.scale ? {...s.size, r: compileProp(s.size.a, 'number', s.size.line ? 1 : 5), w: compileProp(s.size.b, 'number', 0), o: compileProp(s.size.o, 'number', 0)} : null;
+            // How far from the question a feature of the set can be found, in tile units: the distance of the set, or its
+            // size when that is the same for each feature (a width that depends on the zoom alone, as most line layers
+            // have). A size or an offset that depends on the feature, and an offset, give no such distance.
+            const reach = !size ? s.radius : size.r.dd || size.w.dd || size.o.dd || size.o.eval(size.zoom) ? Infinity : Math.min(Math.max(sizeOf(size.line, size.r.eval(size.zoom), size.w.eval(size.zoom)), 0), 1e4) * size.scale!;
+            return {...s, test: compileFilter(s.filter), test2: compileFilter(s.also), size, reach};
+        });
     for (const name in layers) {
         if (q.sourceLayers && !q.sourceLayers.includes(name)) continue;
         const mine = q.sets ? sets.filter(s => s.sourceLayer ? s.sourceLayer === name : name === GEOJSON_LAYER || !s.layer) : sets;
         if (!mine.length) continue;
-        for (const f of layers[name].features) {
+        const features = layers[name].features, known = boxes && (boxes[name] ??= {box: boxesOf(features), read: [], kept: 0}), b = known?.box;
+        // (The largest distance of the sets: no number when a set takes its distance from the feature.)
+        let reach = 0;
+        for (const set of mine) reach = Math.max(reach, set.reach);
+        for (let i = 0, o = 0; i < features.length; i++, o += 4) {
+            const f = features[i];
+            // With the boxes of the tile, a feature whose box is farther from the question than every set reaches is
+            // left out before its filters run and its geometry is read: most features of a tile, for a point.
+            if (b) {
+                if (far(b, o, reach)) continue;
+                // (The rule of the feature with no id, below, from its box.)
+                if (f.id === undefined && f.index === undefined && (b[o + 2] < 0 || b[o + 3] < 0 || b[o] > EXTENT || b[o + 1] > EXTENT)) continue;
+            }
             f.state = f.id === undefined ? undefined : states?.[`${name === GEOJSON_LAYER ? '' : name}|${f.id}`];
-            let c: number[] | null = null, geometry: QueriedFeature['geometry'];
-            const ends: number[] = [];
+            let c: number[] | null = null, ends: number[] = [], geometry: QueriedFeature['geometry'];
             for (const set of mine) {
+                if (b && far(b, o, set.reach)) continue;
                 if ((set.test && !set.test({zoom: q.zoom ?? q.z, f})) || (set.test2 && !set.test2({zoom: q.zoom ?? q.z, f}))) continue;
+                const size = set.size, radius = size ? Math.min(Math.max(sizeOf(size.line, size.r.eval(size.zoom, f), size.w.eval(size.zoom, f)), 0), 1e4) * size.scale! : set.radius;
+                const offset = size && (f.type === 2 || set.ring) ? Math.min(Math.max(size.o.eval(size.zoom, f), -1e4), 1e4) * size.scale! : 0;
+                // (A set whose distance comes from the feature: the same test with that distance. An offset moves a line by
+                // more than its size at a sharp corner, so such a feature is always read.)
+                if (b && size && !offset && far(b, o, radius)) continue;
                 if (!c) {
-                    f.geometry(EXTENT, c = [], ends);
+                    // (A large feature, such as the water of a tile, is near every question: its geometry is read one time.)
+                    const was = known?.read[i];
+                    if (was) c = was.c, ends = was.ends;
+                    else {
+                        f.geometry(EXTENT, c = [], ends);
+                        if (known && kept + c.length <= KEPT_NUMBERS) { known.read[i] = {c, ends}; known.kept += c.length; kept += c.length; }
+                    }
                     // A feature that has no id is in the buffer of a neighbor tile too. As in MapLibre GL JS, the
                     // tile gives it only when its bounding box touches the tile, so that a query gives it one time.
                     if (f.id === undefined && f.index === undefined && outside(c)) break;
                 }
-                const size = set.size, radius = size ? Math.min(Math.max(sizeOf(size.line, size.r.eval(size.zoom, f), size.w.eval(size.zoom, f)), 0), 1e4) * size.scale! : set.radius;
-                const offset = size && (f.type === 2 || set.ring) ? Math.min(Math.max(size.o.eval(size.zoom, f), -1e4), 1e4) * size.scale! : 0;
                 // A line layer draws the rings of a polygon as lines (closed), so it finds them near the ring only.
                 let tc: number[] = c, te = ends;
                 const ring = set.ring && f.type === 3;
@@ -206,7 +271,8 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery, states?: 
                     for (let i = 0, s = 0; i < ends.length; s = ends[i++]) tc.push(...c.slice(s * 2, ends[i] * 2), c[s * 2], c[s * 2 + 1]), te.push(tc.length / 2);
                 }
                 if (!touches(ring ? 2 : f.type, offset ? offsetLine(tc, te, offset) : tc, te, q.px, q.py, radius, q.box)) continue;
-                const feature: FoundFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: f.properties};
+                // (A tile that is kept for the next question keeps the properties of its features: the answer gets a copy.)
+                const feature: FoundFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: boxes ? {...f.properties} : f.properties};
                 if (set.layer !== undefined) feature.layer = set.layer;
                 if (q.box && f.index !== undefined) feature.index = f.index;
                 if (q.geometry) {

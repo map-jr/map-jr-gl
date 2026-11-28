@@ -1,12 +1,12 @@
 import {compileLayer, type CompiledLayer, type LayerJSON} from './style.ts';
 import {compileFor, geo, mergeFeatureState, warnOnce, type MapStates} from './expr.ts';
-import {buildTile, packLabels, toGL, unpackLabels, type GlobeBuild, type GlobeCut, type TileGL, type TileIR} from './tile.ts';
+import {buildTile, packLabels, toGL, unpackLabels, type GlobeBuild, type GlobeCut, type TileGL, type TileIR, type TileLayers} from './tile.ts';
 import {decodeElevation, type DemEncoding} from './elevation.ts';
-import type {QueriedFeature, TileQuery} from './query.ts';
+import type {QueriedFeature, TileBoxes, TileQuery} from './query.ts';
 import {HEIGHT_GRID} from './geo.ts';
 import {fetchWith, requestError, withTimeout, type Ask, type RequestAnswer, type RequestRules} from './requests.ts';
 import {fetchTile, heads, type TileFetchState} from './tile-fetch.ts';
-import {GEOJSON_PREFIX, type GeoJSONOptions, type PreparedSource} from './geojson.ts';
+import {GEOJSON_LAYER, GEOJSON_PREFIX, type GeoJSONOptions, type PreparedSource} from './geojson.ts';
 import {decodeVectorTile} from './mvt.ts';
 import type {ContourConfig, DEM} from './contour.ts';
 import {decodePixels, type ImageDecoder} from './exact-pixels.ts';
@@ -17,6 +17,8 @@ import {part, type PartName, type Parts} from './parts.ts';
  * load, the tile is built without the cut, so that the globe still draws it, and `fault` carries the message, which the
  * map reports once (`oncePerPart`).
  */
+/** The decoded tiles that a tile worker keeps for queries (see `TileBuilder.asked`). */
+const ASKED_TILES = 6;
 async function finish(ir: TileIR, req: TileRequest) {
     let fault: string | undefined;
     const cut: GlobeCut | undefined = req.globe && await part('subdivide').then(m => ({...req.globe!, ...m}), (err: Error) => void (fault = err.message));
@@ -34,7 +36,13 @@ export interface ImageRequest { id: number; url: string }
 export interface ImageTile extends TileFetchState { image: ImageBitmap | null }
 /** `overscaled`: for a tile of the deepest level of its source, the zoom of the map that the tile is built for. */
 export interface TileRequest { id: number; source: string; url: string; z: number; overscaled: number | false; /** The tile: zoom, x and y, for `within` and `distance`. */ at?: [number, number, number]; /** Built again after a change of the style: the bytes that the builder has are good. */ again?: boolean; /** The map draws icons from buffers of the tile (see `IconBatch`). */ direct?: boolean;
-    /** The map can show the globe: fills and lines are cut along a grid (see subdivide.ts). */ globe?: GlobeBuild }
+    /** The map can show the globe: fills and lines are cut along a grid (see subdivide.ts). */ globe?: GlobeBuild;
+    /**
+     * After a change of feature state: only these layers, which read it, are built (see `rebuildState` in engine.ts). With
+     * `changed` (the keys "sourceLayer|id" whose state changed since the tile was built), a tile that has none of these
+     * features in the source layers of these layers is not built: its answer is `same`.
+     */
+    state?: {layers: string[]; changed?: string[]} }
 
 /** Fetches and parses tiles. The same class backs tile workers, the main-thread fallback and server rendering. */
 export class TileBuilder {
@@ -186,7 +194,17 @@ export class TileBuilder {
     private geo?: Promise<void>;
 
     /** Builds a tile. (`within` and `distance` see the tile through `geo.tile`, which is set right before.) */
-    private build(data: Parameters<typeof buildTile>[0], req: TileRequest) { geo.tile = req.at; return buildTile(data, req.z, this.bySource.get(req.source) ?? [], req.overscaled, this.states.f, this.templates, req.direct); }
+    private build(data: Parameters<typeof buildTile>[0], req: TileRequest): TileIR {
+        geo.tile = req.at;
+        let layers = this.bySource.get(req.source) ?? [];
+        if (req.state) {
+            layers = layers.filter(L => req.state!.layers.includes(L.id));
+            // (The features of the tile whose state changed: none means that the tile would be built as it is.)
+            const changed = req.state.changed && new Set(req.state.changed), vt = data as TileLayers;
+            if (changed && !(data instanceof Uint8Array) && !layers.some(L => vt[L.sourceLayer ?? GEOJSON_LAYER]?.features.some(f => f.id !== undefined && changed.has(`${L.sourceLayer ?? ''}|${f.id}`)))) return {layers: {}, labels: {}, same: true};
+        }
+        return buildTile(data, req.z, layers, req.overscaled, this.states.f, this.templates, req.direct);
+    }
     async loadIR(req: TileRequest): Promise<TileIR> {
         if (this.geo) await this.geo;
         if (req.url.startsWith(GEOJSON_PREFIX)) return this.build(await this.slice(req.url), req);
@@ -204,7 +222,9 @@ export class TileBuilder {
             }
             if (!bytes) return {layers: {}, labels: {}, expires: st.expires, etag: st.etag};
             if (n === this.forgotten) this.remember(key, bytes);
-            return {...bytes.length ? this.build(decodeVectorTile(bytes, this.ids[req.source]), req) : {layers: {}, labels: {}}, expires: st.expires, etag: st.etag};
+            // (A build for feature state reads the tile that the worker keeps decoded for queries, when it has it: a pointer
+            // over the map changes the state again and again.)
+            return {...bytes.length ? this.build(req.state ? this.decoded(key, bytes, req.source).layers : decodeVectorTile(bytes, this.ids[req.source]), req) : {layers: {}, labels: {}}, expires: st.expires, etag: st.etag};
         } finally {
             this.aborts.delete(req.id);
         }
@@ -220,6 +240,7 @@ export class TileBuilder {
         this.forgotten++;
         for (const key of this.loading.keys()) if (!source || key.startsWith(source + '|')) this.loading.delete(key);
         for (const key of this.recent.keys()) if (!source || key.startsWith(source + '|')) this.recent.delete(key);
+        for (const key of this.asked.keys()) if (!source || key.startsWith(source + '|')) this.asked.delete(key);
         this.dems.clear();
     }
 
@@ -232,7 +253,14 @@ export class TileBuilder {
 
     /** Queries a tile's raw features. The tile is fetched if it is not already at hand; it need not be on screen. */
     /** (The filters of a question are compiled when it is answered: for the states of this map.) */
-    private find(m: Parts['query'], data: Parameters<Parts['query']['queryTile']>[0], q: TileQuery) { compileFor(this.states); geo.tile = [q.z, q.x, q.y]; return m.queryTile(data, q, this.states.f[q.source]); }
+    private find(m: Parts['query'], data: Parameters<Parts['query']['queryTile']>[0], q: TileQuery, boxes?: TileBoxes) { compileFor(this.states); geo.tile = [q.z, q.x, q.y]; return m.queryTile(data, q, this.states.f[q.source], boxes); }
+    /**
+     * The tiles that were asked last, decoded, with the boxes of their features (see `queryTile`): a pointer that moves
+     * over the map asks the same tile again and again, and reading the whole tile for each question took tens of
+     * milliseconds. A build for feature state reads them too. An entry is that of the bytes that the worker has for the tile and of the ids of the source, so a
+     * tile that was loaded again, or a source with another `promoteId`, is decoded again.
+     */
+    private asked = new Map<string, {bytes: Uint8Array; ids: unknown; layers: TileLayers; boxes: TileBoxes}>();
     async query(url: string, q: TileQuery): Promise<QueriedFeature[]> {
         // The code of the queries is a part that loads on demand (parts.ts): it loads while the tile is read.
         const code = part('query');
@@ -250,7 +278,20 @@ export class TileBuilder {
             bytes = fetched;
             if (n === this.forgotten) this.remember(key, bytes);
         }
-        return bytes.length ? this.find(await code, decodeVectorTile(bytes, this.ids[q.source]), q) : [];
+        if (!bytes.length) return [];
+        const entry = this.decoded(key, bytes, q.source);
+        return this.find(await code, entry.layers, q, entry.boxes);
+    }
+    /** The decoded tile of `asked` for these bytes, which becomes the entry that was asked last. */
+    private decoded(key: string, bytes: Uint8Array, source: string) {
+        const ids = this.ids[source];
+        let entry = this.asked.get(key);
+        this.asked.delete(key);
+        if (entry?.bytes !== bytes || entry.ids !== ids) entry = {bytes, ids, layers: decodeVectorTile(bytes, ids), boxes: {}};
+        // (The entry that was asked last is the last of the map; the one asked longest ago goes.)
+        this.asked.set(key, entry);
+        if (this.asked.size > ASKED_TILES) this.asked.delete(this.asked.keys().next().value!);
+        return entry;
     }
 }
 
@@ -325,7 +366,7 @@ export class PortBackend implements TileBackend {
             if (!p) return;
             this.pending.delete(e.data.id);
             if (e.data.error) p.reject(Object.assign(new Error(e.data.error), {final: e.data.final, status: e.data.status, url: e.data.url}));
-            else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels), icons: e.data.tile.icons, z: e.data.tile.z, expires: e.data.tile.expires, etag: e.data.tile.etag, fault: e.data.tile.fault});
+            else if (e.data.tile) p.resolve({layers: e.data.tile.layers, labels: unpackLabels(e.data.tile.labels), icons: e.data.tile.icons, z: e.data.tile.z, expires: e.data.tile.expires, etag: e.data.tile.etag, fault: e.data.tile.fault, same: e.data.tile.same});
             else p.resolve(e.data.result);
         };
     }
@@ -400,7 +441,7 @@ export function serveTiles(port: Port) {
         } else if (m.type === 'load') {
             try {
                 const {tile, transfer} = await finish(await builder.loadIR(m.req), m.req);
-                port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels), icons: tile.icons, z: tile.z, expires: tile.expires, etag: tile.etag, fault: tile.fault}}, transfer);
+                port.postMessage({id: m.req.id, tile: {layers: tile.layers, labels: packLabels(tile.labels), icons: tile.icons, z: tile.z, expires: tile.expires, etag: tile.etag, fault: tile.fault, same: tile.same}}, transfer);
             } catch (err) {
                 port.postMessage({id: m.req.id, error: (err as Error).name === 'AbortError' ? 'aborted' : String((err as Error).message), final: (err as {final?: boolean}).final, status: (err as {status?: number}).status, url: (err as {url?: string}).url});
             }
