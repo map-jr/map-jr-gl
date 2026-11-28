@@ -1,8 +1,10 @@
-# The checks that a change must pass before it is merged. Runs for each pull request and for each push to main.
+# The checks that a change must pass before it is merged. Runs for each pull request, for each group of the merge
+# queue of main (#2579), and for each push to main. A merge group runs every job, as a push does.
 # (The workflow "Browsers" measures and tests in three browsers on three systems after a merge; it does not gate.)
 name: CI
 on:
   pull_request:
+  merge_group:
   push:
     branches: [main]
 permissions:
@@ -11,7 +13,8 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  # Which of the slow jobs a pull request needs. A push to main runs all of them. A pull request that changes only
+  # Which of the slow jobs a pull request needs. A push to main and a group of the merge queue run all of them.
+  # A pull request that changes only
   # documents, or tools and tests that no browser job reads (scripts/ci-paths.mjs), skips "browser", and one that changes nothing that the built files or the render tests read skips
   # "render". A skipped job counts as passed for a required check, so these jobs can stay required.
   changes:
