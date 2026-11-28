@@ -906,10 +906,8 @@ export class Map extends CoreMap {
     private gesturing?: () => boolean;
     private nested = 0;
     protected override fireResize = true;
-    /** As in MapLibre GL JS, a flight has no `around`: the option is read by `easeTo` only. */
-    flyTo(o: Omit<EaseToOptions, 'around'> & FlyOptions, eventData?: EventData) {
-        const {around: _around, ...rest} = o as typeof o & {around?: unknown};
-        return this.interrupting(() => this.camera(eventData, () => super.flyTo(this.snapped(rest))));
+    flyTo(o: EaseToOptions & FlyOptions, eventData?: EventData) {
+        return this.interrupting(() => this.camera(eventData, () => super.flyTo(this.snapped(this.anchored(o)))));
     }
     protected override observed(first: boolean) {
         // As in MapLibre GL JS, the first call of the observer is for the size that the map has, and does nothing.

@@ -1277,7 +1277,9 @@ export class Map {
     flyTo(o: Parameters<Map['easeTo']>[0] & FlyOptions) {
         // (The options reach easeTo, also through the override of the compat entry, in this member.)
         this.flight = [o.curve ?? 1.42, o.speed ?? 1.2, o.screenSpeed ?? 0, o.minZoom ?? -99, o.maxDuration ?? 1e12, o.duration === undefined ? 1 : 0];
-        return this.easeTo({...o, duration: o.duration ?? 1});
+        // As in MapLibre GL JS, a flight has no `aroundPoint`: only the jump for reduced motion, which is an `easeTo`, keeps it.
+        const still = !(o as {essential?: boolean}).essential && matchMedia('(prefers-reduced-motion: reduce)').matches;
+        return this.easeTo({...o, aroundPoint: still ? o.aroundPoint : undefined, duration: o.duration ?? 1});
     }
     private flight?: number[];
     /** Stops the animation of the camera, where it is. */
