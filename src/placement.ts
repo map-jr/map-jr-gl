@@ -515,6 +515,9 @@ export function placeLabels(
     prev?: (key: string) => string | undefined,
 ): Placed[] {
     const out: Placed[] = [], seen = new SameText(), far = tr.depthRange()[1];
+    // The tiles are placed in the order of MapLibre GL JS: the deepest level first, then by world copy, x and y. Where
+    // the labels of two tiles collide, the same one wins (#2511). (The tiles of the view come nearest first.)
+    items = [...items].sort((a, b) => (b.tile.z ?? b.id.z) - (a.tile.z ?? a.id.z) || a.id.w - b.id.w || a.id.x - b.id.x || a.id.y - b.id.y);
     let itemNo = 0;
     const cover = new Map<number, TileID[]>(), keys = new Map<string, number>();
     const twins = new Map<string, {layer: string; group?: string; box: Box; x: number; y: number; justify?: number}>();
