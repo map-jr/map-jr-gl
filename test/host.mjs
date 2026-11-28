@@ -5550,6 +5550,50 @@ for (const renderer of renderers) for (const [name, host, meta] of [['the same o
     } catch (e) { check('the test of an elevation tile whose reload answers 404 was completed', false, String(e.message).split('\n')[0]); }
     await page.close();
 }
+// 3D terrain whose elevation tiles under the center fail with a 500, or answer after 7 s. The map draws its draped
+// layers at once at height 0 when the tile failed, and after the hold of 3 s when the tile is slow, as MapLibre GL JS
+// draws the map while the elevation is missing. A failed tile is requested again after its retry delay. Before, a 500
+// held the frame for 3 s, the flat fallback then drew only the background, and the failed tile was never requested
+// again (#2589, #2271, #2328, #2329).
+for (const mode of renderers) {
+    const page = await browser.newPage({viewport: {width: 600, height: 400}});
+    try {
+        await page.goto(`${origin}/bench`);
+        const seen = new Map();
+        await page.route(/\/dem2589(fail|slow)\//, async route => {
+            const k = new URL(route.request().url()).pathname;
+            seen.set(k, (seen.get(k) ?? 0) + 1);
+            const headers = {'access-control-allow-origin': '*'};
+            if (k.includes('fail')) return route.fulfill({status: 500, body: '', headers}).catch(() => {});
+            await new Promise(r => setTimeout(r, 7000));
+            return route.fulfill({status: 200, contentType: 'image/png', body: solidPNG(256, [128, 0, 0]), headers}).catch(() => {});
+        });
+        const red = async () => page.evaluate(async png => { const bmp = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: 1, height: 1}).getContext('2d'); c.drawImage(bmp, 0, 0); return [...c.getImageData(0, 0, 1, 1).data.slice(0, 3)].join(','); }, (await page.screenshot({clip: {x: 300, y: 300, width: 1, height: 1}})).toString('base64'));
+        const open = (kind, renderer) => page.evaluate(async ([kind, renderer]) => {
+            const lib = await import('/dist/map-jr-gl.js');
+            const world = {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-179, -80], [179, -80], [179, 80], [-179, 80], [-179, -80]]]}};
+            const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: [location.origin + `/dem2589${kind}/{z}/{x}/{y}.png`], encoding: 'terrarium', tileSize: 256, maxzoom: 4}, g: {type: 'geojson', data: world}},
+                terrain: {source: 'dem'}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#00f'}}, {id: 'f', type: 'fill', source: 'g', paint: {'fill-color': '#f00'}}]};
+            window.host2589?.destroy();
+            document.querySelector('#m2589')?.remove();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {id: 'm2589', style: 'position:fixed;inset:0;z-index:99'}));
+            window.host2589 = lib.createMap(el, {style, initialView: {center: [10, 45], zoom: 6, pitch: 60}, renderer, attribution: false});
+            window.host2589.listen('error', () => {});
+        }, [kind, renderer]);
+        await open('fail', mode);
+        await page.waitForTimeout(1500);
+        const fail = await red();
+        await page.waitForTimeout(1500);
+        const tries = Math.max(0, ...[...seen].filter(([k]) => k.startsWith('/dem2589fail/0/')).map(([, n]) => n));
+        await open('slow', mode);
+        await page.waitForTimeout(4500);
+        const slow = await red();
+        await page.evaluate(() => window.host2589.destroy());
+        check(`[${mode}] 3D terrain: an elevation tile of the center that answers 500 draws the draped layers at once and is requested again (#2589)`, fail === '255,0,0' && tries >= 2, JSON.stringify({fail, tries}));
+        check(`[${mode}] 3D terrain: a slow elevation tile of the center draws the draped layers after the hold, not only the background (#2589)`, slow === '255,0,0', JSON.stringify({slow}));
+    } catch (e) { check(`[${mode}] the check of a failed or slow elevation tile of the center ran (#2589)`, false, String(e.message).split('\n')[0]); }
+    await page.close();
+}
 // A raster tile whose reload answers 404 becomes a tile that the server does not have, as on a first load: its old image
 // goes, and a tile of a lower zoom stands in (MapLibre GL JS marks the tile `errored`, so its parent is drawn). The tiles
 // of zoom 4 are green with `max-age=2` and answer 404 from their first reload on; the tiles of lower zoom levels are red.

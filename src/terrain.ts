@@ -180,24 +180,26 @@ export function terrainTiles(this: any, wanted: Set<string>): TerrainTile[] {
         for (const t of this.viewCover(terrain.source)) if (touches(t, id)) for (let dz = t.z; dz >= demSrc.minzoom; dz--) {
             const x = t.x >> t.z - dz, y = t.y >> t.z - dz, dk = `${dz}/${x}/${y}`, demKey = terrain.source + '|' + dk;
             wanted.add(demKey);
-            const dem = this.tiles.get(demKey);
+            // (A failed elevation tile is requested again when its time to try again has come, as other tiles are; #2589.)
+            const dem = this.retried(terrain.source, {z: dz, x, y, w: 0, key: dk}, demKey);
             if (!dem) { this.request(terrain.source, {z: dz, x, y, w: 0, key: dk}, demKey); this.demLoading = true; break; }
             dem.used = this.frameNo;
             // (An elevation tile whose response has expired is requested again, and keeps its heights until then; #1988.)
             if (dem.state === 'ok') this.refresh(terrain.source, {z: dz, x, y, w: 0, key: dk}, demKey, dem);
             // (A loading elevation tile holds `idle` back: no layer may draw the source, and then nothing else waits for it, #820.)
-            if (dem.state === 'loading') this.demLoading = true;
-            if (dem.state === 'loading' || dem.range) break; // otherwise it failed or came back empty: try the level above
+            // (A tile that is requested again after a failure holds back neither `idle` nor the level above, which stands in.)
+            if (dem.state === 'loading' && !dem.tries) { this.demLoading = true; break; }
+            if (dem.range) break; // otherwise it failed or came back empty, or is tried again: use the level above
         }
         // A coarse elevation tile of the surroundings stays loaded as well (one tile covers many ground tiles). Ground
         // that comes into view next to the camera then has its shape and a soft relief at once, not a flat slab
         // until its own tiles arrive.
         const oz = Math.max(demSrc.minzoom, Math.min(demSrc.maxzoom, Math.floor(tr.zoom)) - 3);
         if (id.z > oz) {
-            const x = id.x >> id.z - oz, y = id.y >> id.z - oz, dk = `${oz}/${x}/${y}`, demKey = terrain.source + '|' + dk, dem = this.tiles.get(demKey);
+            const x = id.x >> id.z - oz, y = id.y >> id.z - oz, dk = `${oz}/${x}/${y}`, demKey = terrain.source + '|' + dk, dem = this.retried(terrain.source, {z: oz, x, y, w: 0, key: dk}, demKey);
             wanted.add(demKey);
             if (dem) { dem.used = this.frameNo; if (dem.state === 'ok') this.refresh(terrain.source, {z: oz, x, y, w: 0, key: dk}, demKey, dem); } else this.request(terrain.source, {z: oz, x, y, w: 0, key: dk}, demKey);
-            if (!dem || dem.state === 'loading') this.demLoading = true;
+            if (!dem || dem.state === 'loading' && !dem.tries) this.demLoading = true;
         }
         // Heights for the tile's mesh, looked up by position in data all tiles share (so edges meet exactly), and
         // refreshed a few tiles per frame when new elevation data arrives.
