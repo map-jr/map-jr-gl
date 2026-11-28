@@ -33,10 +33,8 @@ table names the causes that this triage found. "label" names a label of
 | `combinations/color-relief--hillshade--vector-fill--color-relief--hillshade` | near 1.6% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
 | `combinations/fill-extrusion-translucent--hillshade-translucent` | near 3.6% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
 | `combinations/fill-extrusion-translucent--symbol-translucent` | differ 5.2% | The icon along the edge of the polygon (`symbol-placement: line`) sits at another point of the line than in MapLibre. | #1774 |
-| `combinations/fill-opaque--fill-extrusion-translucent` | near 1.4% | The edges of the extrusion are a pixel above and to the right of MapLibre's. | #1803 |
 | `combinations/fill-opaque--hillshade-translucent` | near 3.1% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
 | `combinations/fill-opaque--symbol-translucent` | near 4.8% | The icon along the edge of the polygon (`symbol-placement: line`) sits at another point of the line than in MapLibre. | #1774 |
-| `combinations/fill-translucent--fill-extrusion-translucent` | near 1.4% | The edges of the extrusion are a pixel above and to the right of MapLibre's. | #1803 |
 | `combinations/fill-translucent--hillshade-translucent` | near 3.3% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
 | `combinations/fill-translucent--symbol-translucent` | differ 5.2% | The icon along the edge of the polygon (`symbol-placement: line`) sits at another point of the line than in MapLibre. | #1774 |
 | `combinations/heatmap-translucent--background-opaque` | differ 97.8% | The heatmap is drawn under the opaque layer above it. | label (heatmap over an opaque layer above it, wontfix) |
@@ -44,7 +42,6 @@ table names the causes that this triage found. "label" names a label of
 | `combinations/heatmap-translucent--hillshade-translucent` | near 2.2% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
 | `combinations/heatmap-translucent--symbol-translucent` | near 4.7% | The icon along the edge of the polygon (`symbol-placement: line`) sits at another point of the line than in MapLibre. | #1774 |
 | `combinations/hillshade-translucent--circle-translucent` | near 3.2% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
-| `combinations/hillshade-translucent--fill-extrusion-translucent` | near 3.7% | The edges of the extrusion are a pixel above and to the right of MapLibre's. | #1803 |
 | `combinations/hillshade-translucent--fill-opaque` | near 3.0% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
 | `combinations/hillshade-translucent--fill-translucent` | near 3.2% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
 | `combinations/hillshade-translucent--hillshade-translucent` | near 3.6% | The hillshade differs by a pixel along ridges and at tile edges. | #1802 |
@@ -100,12 +97,11 @@ table names the causes that this triage found. "label" names a label of
 | `line-dasharray/function/line-width-composite-function` | near 3.7% | The ends of the dashes are sharp, where MapLibre softens them over one or more pixels. | #1804 |
 | `line-dasharray/literal/line-width-composite-function` | near 2.6% | The ends of the dashes are sharp, where MapLibre softens them over one or more pixels. | #1804 |
 | `line-dasharray/literal/line-width-zoom-function` | near 3.9% | The ends of the dashes are sharp, where MapLibre softens them over one or more pixels. | #1804 |
-| `line-dasharray/overscaled` | near 1.4% | Some dashed lines are drawn solid. | #1806 |
+| `line-dasharray/overscaled` | near 1.4% | The dashes of an over-zoomed line start at another place than in MapLibre, which slices the tile and starts the distance again at each slice. | #2527 |
 | `line-dasharray/property-function/cap-default` | differ 5.6% | With a `line-dasharray` for each feature, the dashes of one line are longer than in MapLibre. | #1807 |
 | `line-dasharray/round/segments` | near 3.3% | Round dashes have another length and position than in MapLibre. | #1805 |
 | `line-dasharray/round/single-dasharray-element` | differ 6.1% | The round caps at the ends of the line are shorter, and the thin lines are lighter. | #1805 |
 | `line-dasharray/round/zero-gap-width` | near 3.7% | Round dashes have another length and position than in MapLibre. | #1805 |
-| `line-dasharray/slant` | near 3.3% | Some dashed lines are drawn solid. | #1806 |
 | `line-dasharray/zero-length-gap` | differ 24.6% | `line-offset` and `line-blur` for each feature are not read. | label (line-offset and line-blur for each feature, later) |
 | `line-gradient/gradient-step-zoomed-cross-continental` | near 4.5% | The line is drawn in one color instead of the steps of `line-gradient`. | #1808 |
 | `line-gradient/gradient-step-zoomed` | near 4.2% | The steps of `line-gradient` are blended into a smooth gradient. | #1808 |
@@ -186,11 +182,10 @@ table names the causes that this triage found. "label" names a label of
 | Issue | Cause | Tests |
 |---|---|---|
 | #1802 | The hillshade differs from MapLibre by a pixel along ridges and at tile edges. | 27 |
-| #1803 | `fill-extrusion` edges are a pixel above and to the right of MapLibre's at pitch 0. | 3 |
 | #1804 | `line-dasharray`: the ends of the dashes are sharp where MapLibre softens them. | 5 |
 | #1805 | `line-dasharray` with `line-cap: round`: dashes have another length and position. | 3 |
-| #1806 | `line-dasharray`: some dashed lines are drawn solid (`slant`, `overscaled`). | 2 |
 | #1807 | `line-dasharray` for each feature gives longer dashes than in MapLibre. | 1 |
+| #2527 | `line-dasharray`: the dashes of an over-zoomed line start at another place than in MapLibre. | 1 |
 | #1808 | `line-gradient` with `step` is blended into a smooth gradient or drawn in one color. | 2 |
 | #1809 | `line-gradient`: joins of segments are drawn twice, so they are darker. | 2 |
 | #1810 | `line-pattern` is sampled sharper than in MapLibre and scaled differently on narrow lines. | 13 |

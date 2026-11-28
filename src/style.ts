@@ -228,6 +228,12 @@ export interface CompiledLayer {
      * stops is a linear mix. Any other value gives one transparent stop, so that the layer draws nothing.
      */
     relief?: Float32Array;
+    /**
+     * Line layers whose `line-gradient` is a `step` expression: -1, then the stops of the steps, in rising order. `ramp`
+     * has the color from each, and the shader takes the color of the last stop at or below the place along the line.
+     * As in MapLibre GL JS, the steps stay hard however long the line is (a ramp of 256 pixels would blend them).
+     */
+    steps?: Float32Array;
     /** Symbol layers: the same for layers that have the same data and layout. As in MapLibre, such layers share their labels. */
     group?: string;
     /**
@@ -290,7 +296,14 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
         p[k] = l.type === 'hillshade' && LIGHT_PROPS.includes(k) && Array.isArray(v) ? compileProp(typeof v[0] !== 'string' || parseColor(v[0]) ? ['literal', v] : v, 'string', def) : compileProp(v, kind, def, values);
     }
     // A server-only extra filter is compiled separately, so it can be an expression even when the layer's own filter is legacy syntax.
-    let relief: Float32Array | undefined, ramp: Uint8Array | undefined;
+    let relief: Float32Array | undefined, ramp: Uint8Array | undefined, steps: Float32Array | undefined;
+    const g = l.type === 'line' && l.paint?.['line-gradient'];
+    if (Array.isArray(g) && g[0] === 'step') {
+        // (The colors come from the stops as written: a stop as a 32-bit float can be below it, and give the color before.)
+        const at = [-1, ...g.slice(3).filter((v, i) => i % 2 < 1 && typeof v === 'number').slice(0, 2047)];
+        steps = Float32Array.from(at);
+        ramp = colorRamp(g, at);
+    }
     if (l.type === 'color-relief') {
         const e = l.paint?.['color-relief-color'], stops = Array.isArray(e) && /^interpolate/.test(e[0]) ? e.slice(3).filter((v, i) => i % 2 < 1 && typeof v === 'number').slice(0, 2048) : []; // (a texture of 2048 pixels is the most that every browser has)
         relief = Float32Array.from(stops.length > 1 ? stops : [stops[0] ?? 0, (stops[0] ?? 0) + 1]);
@@ -301,7 +314,7 @@ export function compileLayer(l: LayerJSON): CompiledLayer | null {
         ssr: l.metadata?.[SSR_KEY],
         group: l.type === 'symbol' ? JSON.stringify([l.source, l['source-layer'], l.minzoom, l.maxzoom, l.filter, l.layout]) : undefined,
         fixedSize: l.layout?.['icon-offset'] != null,
-        relief, ramp: ramp ?? (l.type === 'heatmap' ? colorRamp(l.paint?.['heatmap-color'] ?? HEATMAP_COLORS) : l.type === 'line' && l.paint?.['line-gradient'] ? colorRamp(l.paint['line-gradient']) : undefined),
+        relief, steps, ramp: ramp ?? (l.type === 'heatmap' ? colorRamp(l.paint?.['heatmap-color'] ?? HEATMAP_COLORS) : g ? colorRamp(g) : undefined),
         id: l.id, type: l.type, source: l.source, sourceLayer: l['source-layer'],
         minzoom: l.minzoom ?? -2, maxzoom: l.maxzoom ?? 24,
         // Pattern fills need sprite images, which are not supported yet; hiding them beats drawing solid black.

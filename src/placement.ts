@@ -1,4 +1,4 @@
-import {type Mat, type Transform, type TileID, EXTENT} from './geo.ts';
+import {type Mat, type Transform, type TileID, EXTENT, tileOrder} from './geo.ts';
 import {mapTranslate, type CompiledLayer, type SpriteIcon} from './style.ts';
 import {anchors as lineAnchors, justification, type LabelSrc} from './tile.ts';
 import {BASELINE, EM, type Shaped, type Shaper} from './text.ts';
@@ -447,9 +447,10 @@ const alongLine = new WeakMap<LabelSrc[], {shaper: Shaper; generation: number; m
  * map, and the entry names its shaper.) `maxZoom` is the `maxZoom` of the map, which decides into which squares
  * MapLibre GL JS cuts an over-zoomed tile (see `squaresInView`). On the globe, `level` is the level of the tiles that
  * MapLibre GL JS shows at the zoom of the map: a tile of a lower level is cut into squares of that level, each with the
- * spacing of a tile of its own, so that `symbol-spacing` is as wide on the screen as in MapLibre GL JS.
+ * spacing of a tile of its own, so that `symbol-spacing` is as wide on the screen as in MapLibre GL JS. `row` is the y
+ * of the tile, on the globe only (see the path of each anchor below).
  */
-export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLookup, maxZoom = 22, view?: (k: number) => number[], level?: number): LabelSrc[] {
+export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLookup, maxZoom = 22, view?: (k: number) => number[], level?: number, row?: number): LabelSrc[] {
     if (!labels.some(l => l.line)) return labels;
     const generation = shaper.generation ?? 0;
     let done = alongLine.get(labels);
@@ -482,7 +483,17 @@ export function lineLabels(labels: LabelSrc[], shaper: Shaper, icons?: IconLooku
                 if (made >= MAX_LINE_ANCHORS) break;
                 const ds = anchorDistances(part, spacing, length, EM * scale, ov / k, l.text ? 0.6 * EM * scale : 0, l.maxAngle * Math.PI / 180, MAX_LINE_ANCHORS - made, x0, y0, size);
                 if (!ds.length) continue;
-                for (const a of lineAnchors(part, 0, part.length / 2, 2, true, l.window!, ds, k)) {
+                // The path of each anchor has the length of its text in the tile, with 8 tile units a pixel (`window`). On
+                // the globe a tile unit is shorter on the sphere by the cosine of its latitude, so text near a pole needs
+                // more of the line than that (#2508). The path grows by 1 / cos of the latitude of the part nearest a pole,
+                // which is enough for any center of the map.
+                let win = l.window!;
+                if (row !== undefined && win) {
+                    let far = 0;
+                    for (let i = 1; i < part.length; i += 2) far = Math.max(far, Math.abs(1 - 2 * (row + part[i] / EXTENT) / 2 ** l.tz!));
+                    win *= Math.cosh(Math.PI * far);
+                }
+                for (const a of lineAnchors(part, 0, part.length / 2, 2, true, win, ds, k)) {
                     if (cells) {
                         const cx = Math.floor(a[0] / repeat), cy = Math.floor(a[1] / repeat);
                         let close = false;
@@ -515,6 +526,9 @@ export function placeLabels(
     prev?: (key: string) => string | undefined,
 ): Placed[] {
     const out: Placed[] = [], seen = new SameText(), far = tr.depthRange()[1];
+    // The tiles are placed in the order of MapLibre GL JS: the deepest level first, then by world copy, x and y. Where
+    // the labels of two tiles collide, the same one wins (#2511). (The tiles of the view come nearest first.)
+    items = [...items].sort(tileOrder);
     let itemNo = 0;
     const cover = new Map<number, TileID[]>(), keys = new Map<string, number>();
     const twins = new Map<string, {layer: string; group?: string; box: Box; x: number; y: number; justify?: number}>();
@@ -533,7 +547,7 @@ export function placeLabels(
         // The labels of a layer with `symbol-sort-key` are placed in the order of the key over all tiles, as in MapLibre:
         // a label does not win only because its tile comes first.
         let runs: {it: typeof items[0]; labels: LabelSrc[]; no: number}[] = [];
-        for (const it of items) { const labels = it.tile.labels?.[L.id]; itemNo++; if (labels) runs.push({it, labels: lineLabels(labels, shaper, icons, tr.maxZoom, k => squaresInView(tr, it.id, k, cover), tr.globeness ? Math.floor(tr.zoom) : undefined), no: itemNo}); }
+        for (const it of items) { const labels = it.tile.labels?.[L.id]; itemNo++; if (labels) runs.push({it, labels: lineLabels(labels, shaper, icons, tr.maxZoom, k => squaresInView(tr, it.id, k, cover), tr.globeness ? Math.floor(tr.zoom) : undefined, tr.globeness ? it.id.y : undefined), no: itemNo}); }
         if (runs.length > 1 && (L.p.sortKey.dd || L.p.sortKey.eval(tr.zoom) !== 0)) {
             const all: typeof runs = [];
             for (const r of runs) for (const l of r.labels) all.push({it: r.it, labels: [l], no: r.no});
@@ -615,12 +629,15 @@ export function placeLabels(
                         const ground = !!(tr.pitch || tr.globeness) && l.flat, fit = L.fixedSize ? ground ? persp : 1 / persp : 1;
                         const curved = followLine(tr, it, l, shaped!.lines[0], s, ax, ay, w, h, ground ? s / persp / persp : 0, fit);
                         if (!curved) continue;
+                        // (`text-translate` moves the whole text and its boxes, as MapLibre GL JS moves each point of the line by it.)
+                        const [mx, my] = translateAt(tr, it.id, l.x, l.y, ax, ay, tt);
+                        if (mx || my) for (const b of curved.boxes) { b[0] += mx; b[1] += my; b[2] += mx; b[3] += my; }
                         if (!l.overlap && curved.boxes.some(b => grid.hits(...b))) continue;
                         // (Its boxes go into the grid after its icon is placed: as in MapLibre, an icon is not blocked by its own text.)
                         bentBoxes = l.ignore ? [] : curved.boxes;
                         const n = 2 ** it.id.z, q = 2 ** 22;
                         const key = `${L.id}|${l.text}||${Math.round((it.id.x + l.x / EXTENT) / n * q)},${Math.round((it.id.y + l.y / EXTENT) / n * q)},${it.id.w}`;
-                        bent = {x: ax, y: ay, angle: 0, size: (curved.ground ? size / persp / persp : size) * fit, shaped, src: l, curve: curved.curve, ground: curved.ground, key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, alpha, fixedSize: L.fixedSize || undefined};
+                        bent = {x: ax + mx, y: ay + my, angle: 0, size: (curved.ground ? size / persp / persp : size) * fit, shaped, src: l, curve: curved.curve, ground: curved.ground, key, layer: L.id, tile: it.id, ax, ay, depth, opacity: 1, alpha, fixedSize: L.fixedSize || undefined, tt};
                         // (No icon: the text is all. With an icon, the icon is found below, as for other text.)
                         if (!meta) { for (const b of bentBoxes) grid.insert(...b); out.push(bent); continue; }
                     } else if (line && !l.upright) {

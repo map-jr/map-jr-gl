@@ -6,6 +6,7 @@ import type {CameraOptions as CoreCameraOptions} from './engine.ts';
 import type {CameraInput, FlyOptions} from './map.ts';
 import type {Control} from './controls.ts';
 import type {LngLat, LngLatBounds, LngLatBoundsInput} from './lnglat.ts';
+import type {LngLatLike} from './geo.ts';
 import type {AttributionControl} from './controls.ts';
 import type {NavigationControl, ScaleControl, FullscreenControl, GeolocateControl, ScaleUnit} from './controls-more.ts';
 import type {Anchor} from './markers.ts';
@@ -161,10 +162,10 @@ export interface CustomLayerInterface {
     onRemove?(map: Map, gl: WebGL2RenderingContext): void;
 }
 
-export type AnimationOptions = {duration?: number; around?: [number, number]};
+export type AnimationOptions = {duration?: number; around?: LngLatLike};
 export type JumpToOptions = Parameters<Map['jumpTo']>[0];
 /** `essential: true` animates the change also when the user asked the system for less motion. */
-export type EaseToOptions = CameraInput & {duration?: number; around?: [number, number]; essential?: boolean; offset?: [number, number] | {x: number; y: number}; easing?: (t: number) => number};
+export type EaseToOptions = CameraInput & {duration?: number; around?: LngLatLike; essential?: boolean; offset?: [number, number] | {x: number; y: number}; easing?: (t: number) => number};
 export type FlyToOptions = EaseToOptions;
 /**
  * The options of `map.fitBounds`, as in MapLibre GL JS: those of `flyTo`, `maxZoom`, and `linear`, which makes the fit ease as `easeTo`

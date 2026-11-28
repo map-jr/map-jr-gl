@@ -154,6 +154,10 @@ export class Point {
     _round() { return this.set(Math.round(this.x), Math.round(this.y)); }
 }
 export class Map extends CoreMap {
+    /** As in MapLibre GL JS, a query answers with the old `visibility` and filter of a layer until `idle` (#2364). */
+    protected keepsOldQuery = true;
+    /** The answers that were asked with the old values are dropped, so the next call asks the engine again. */
+    protected staleCleared() { this.forget(); }
     /** As in MapLibre GL JS: with it on, the wheel zooms only with Ctrl (⌘ on a Mac), and one finger scrolls the page. */
     readonly cooperativeGestures = cooperativeGestures(this);
     /**
@@ -850,8 +854,14 @@ export class Map extends CoreMap {
         this.waiting = list;
         try { for (let e; (e = list.shift());) this.fire(e[0], {...e[1]}); } finally { this.waiting = undefined; }
     }
+    /** As in MapLibre GL JS, `around` is a position: the core takes the screen point of it (`aroundPoint`), computed at the start. */
+    private anchored<T extends {around?: LngLatLike}>(o: T): T {
+        if (o.around === undefined) return o;
+        const {around, ...rest} = o, [lng, lat] = toLngLat(around);
+        return {...rest, aroundPoint: this.tr.project(lng, lat)} as unknown as T;
+    }
     easeTo(o: EaseToOptions, eventData?: EventData) {
-        return this.interrupting(() => this.camera(eventData, () => super.easeTo(this.snapped(o))));
+        return this.interrupting(() => this.camera(eventData, () => super.easeTo(this.snapped(this.anchored(o)))));
     }
     /**
      * As `scheduleSegment` of MapLibre GL JS, an animation that starts while another runs ends the old movement during
@@ -863,7 +873,7 @@ export class Map extends CoreMap {
         this.halt();
         return f();
     }
-    protected override easeStarted() { if (!this.gesturing?.()) this.begin(); }
+    protected override easeStarted(c: Extract<Command, {type: 'ease'}>) { if (!this.gesturing?.()) this.begin(); else this.beginDuringDrag(); this.startAxes(c); }
     /**
      * Moves the camera to fit a box, as in MapLibre GL JS: it flies there as `flyTo` does, or eases there as `easeTo` does when `o` sets `linear`.
      * The zoom fits the box as seen from above, turned by `bearing`. As in MapLibre GL JS, `offset` moves the fitted view and then the move, so it counts twice. The other options of `o` (`pitch`, `duration`, `speed`, `curve`, `essential` and the rest) go to that move.
@@ -897,7 +907,7 @@ export class Map extends CoreMap {
     private nested = 0;
     protected override fireResize = true;
     flyTo(o: EaseToOptions & FlyOptions, eventData?: EventData) {
-        return this.interrupting(() => this.camera(eventData, () => super.flyTo(this.snapped(o))));
+        return this.interrupting(() => this.camera(eventData, () => super.flyTo(this.snapped(this.anchored(o)))));
     }
     protected override observed(first: boolean) {
         // As in MapLibre GL JS, the first call of the observer is for the size that the map has, and does nothing.

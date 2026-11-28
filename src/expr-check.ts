@@ -432,10 +432,10 @@ const curve = (e: any): string => !Array.isArray(e) ? '' : e[0] === 'let' ? curv
 /**
  * MapLibre's errors for the expression `e` of a property whose type and flags are `code` (see `expressionCode` in
  * scripts/style-spec-values.mjs), as `createPropertyExpression` and `validateExpression` give them, each with the key
- * of its place in `e` ('' for the whole expression). `layout` marks a layout property (or 'filter', a filter, whose code has no type: MapLibre expects none), where "feature-state" is not
+ * of its place in `e` ('' for the whole expression). `layout` marks a layout property (or 'filter', a filter, whose code has no type: MapLibre expects none; 'cluster', the expressions of `clusterProperties`, which take no zoom and no feature state), where "feature-state" is not
  * supported. The errors of ["zoom"] in the wrong place are not here: `zoomCurveError` of src/mistakes.ts has them.
  */
-export function expressionErrors(e: unknown, code: string, layout?: boolean | 'filter'): ExprError[] {
+export function expressionErrors(e: unknown, code: string, layout?: boolean | 'filter' | 'cluster'): ExprError[] {
     const [type, flags] = code.split(' ');
     const want = type[0] === 'A' ? arr(types[type[1]], type.length > 2 ? +type.slice(2) : undefined) : types[type];
     const x: Ctx = {path: [], want, scope: {}, errors: []};
@@ -445,6 +445,7 @@ export function expressionErrors(e: unknown, code: string, layout?: boolean | 'f
     if (n.f && !flags.includes('d')) return one('data expressions not supported');
     if (n.z && !flags.includes('z')) return one('zoom expressions not supported');
     if (curve(e).startsWith('interpolate') && !flags.includes('i')) return one('"interpolate" expressions cannot be used with this property');
+    if (layout === 'cluster' && (n.z || n.s)) return one('"zoom" and "feature-state" expressions are not supported with cluster properties.');
     if (layout && n.s) return one(`"feature-state" data expressions are not supported with ${layout === true ? 'layout properties' : 'filters'}.`);
     return [];
 }

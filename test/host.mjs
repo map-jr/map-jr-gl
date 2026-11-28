@@ -5711,6 +5711,35 @@ for (const renderer of ['worker', 'main']) {
     } catch (e) { check(`[${renderer}] the change after a pause was checked`, false, String(e.message).split('\n')[0]); }
     finally { await page.close(); }
 }
+// The one more frame after a pause (#429) is not itself taken for a frame after a pause (#971). Where the frames of the
+// page come more than 100 ms apart (a slow device, or WebGL in software), each extra frame asked for the next one, and a
+// map at rest drew without end: its frames took the time of the page, and a paint transition reached `idle` late. The
+// page here gives a frame every 150 ms; a map at rest then draws no frame in ten frames of the page.
+{
+    const page = await browser.newPage({viewport: {width: 400, height: 300}});
+    try {
+        await page.goto(`${origin}/bench`);
+        const renders = await page.evaluate(async () => {
+            const ownFrame = window.requestAnimationFrame.bind(window);
+            window.requestAnimationFrame = cb => setTimeout(() => ownFrame(cb), 150);
+            const frames = n => new Promise(r => { const f = () => --n > 0 ? requestAnimationFrame(f) : r(); requestAnimationFrame(f); });
+            const lib = await import('/dist/map-jr-gl.js');
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ff0000'}}]};
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:200px;height:150px'}));
+            const map = lib.createMap(el, {style, renderer: 'main', attribution: false});
+            await new Promise(r => { const off = map.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); });
+            let n = 0;
+            map.listen('render', () => n++);
+            await frames(4);
+            n = 0;
+            await frames(10);
+            map.destroy();
+            return n;
+        });
+        check('a map at rest stops drawing when the frames of the page come more than 100 ms apart (#971)', renders <= 1, JSON.stringify({renders}));
+    } catch (e) { check('the frames of a map at rest with slow page frames were counted', false, String(e.message).split('\n')[0]); }
+    finally { await page.close(); }
+}
 // The style sheet goes into the root node of the container (#47): a map in a shadow root has styled controls, also when
 // its container is attached to the shadow root after the map is made. A page with `style-src 'nonce-x'` and the option
 // `nonce: 'x'` has styled controls, with a constructed style sheet and with a `<style>` element (no adoptedStyleSheets).
@@ -5768,6 +5797,28 @@ for (const renderer of ['worker', 'main']) {
             });
             check("a map with nonce: 'x' after a map without one has styled controls when style-src blocked the first sheet (#2435)", two.corner === 'absolute' && two.sheets === 1, JSON.stringify(two));
         } finally { await page.close(); }
+        // #2512: the styles() control adds its fallback sheet to the root of the map, and a map with a nonce replaces a blocked one.
+        const page2 = await browser.newPage({viewport: {width: 600, height: 400}});
+        try {
+            await page2.route(`${origin}/csp-page`, r => r.fulfill({contentType: 'text/html', headers: {'Content-Security-Policy': "style-src 'nonce-x'"}, body: '<!doctype html><title>csp</title><body></body>'}));
+            await page2.addInitScript(() => { delete Document.prototype.adoptedStyleSheets; delete ShadowRoot.prototype.adoptedStyleSheets; });
+            await page2.goto(`${origin}/csp-page`);
+            const res = await page2.evaluate(async () => {
+                const lib = await import('/dist/map-jr-gl.js'), {styles} = await import('/dist/controls.js');
+                const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}]};
+                const entries = [{label: 'A', style}];
+                const until = async f => { for (const end = Date.now() + 15000; !f() && Date.now() < end;) await new Promise(r => setTimeout(r, 30)); return f(); };
+                const make = (parent, nonce) => { const el = parent.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'})); return {el, map: lib.createMap(el, {style, renderer: 'main', controls: [styles({entries})], ...nonce && {nonce}})}; };
+                const pos = async m => { await until(() => m.el.querySelector('.map-jr-styles')); return getComputedStyle(m.el.querySelector('.map-jr-styles')).position; };
+                const host = document.body.appendChild(document.createElement('div')), root = host.attachShadow({mode: 'open'});
+                const s = make(root, 'x'), a = make(document.body), b = make(document.body, 'x');
+                const out = {shadow: await pos(s), shadowSheet: !!root.getElementById('map-jr-styles-css'), blocked: await pos(a), nonce: await pos(b), sheets: document.querySelectorAll('#map-jr-styles-css').length};
+                s.map.destroy(); a.map.destroy(); b.map.destroy();
+                return out;
+            });
+            check("a styles() control in a shadow root is styled and has its sheet in that root (#2512)", res.shadow === 'relative' && res.shadowSheet, JSON.stringify(res));
+            check("a styles() control of a map with nonce: 'x' after a map without one is styled when style-src blocked the first sheet (#2512)", res.nonce === 'relative' && res.sheets === 1, JSON.stringify(res));
+        } finally { await page2.close(); }
     } catch (e) { check('the style sheet in a shadow root and with a nonce was checked', false, String(e.message).split('\n')[0]); }
 }
 // #828: a map in an open shadow root. The focus moves into a popup that opens and returns to the map after Escape, from

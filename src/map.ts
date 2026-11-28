@@ -859,7 +859,8 @@ export class Map {
             if (e.moving) this.awaitingInertia = false;
             this.engineMoving = !!e.moving;
             if (this.loud(e)) {
-                if (!this.moving) this.fire('movestart');
+                // (An ease during a drag that goes on after the release continues the movement: the release has fired the `moveend` of the drag, #2469.)
+                if (!this.moving && !this.easedDuringDrag) this.fire('movestart');
                 this.moving = true;
                 this.fire('move');
                 if (this.dragMove && (e.seq ?? this.dragSeq) >= this.dragSeq) { const ev = this.dragMove; this.dragMove = undefined; this.fire('drag', {originalEvent: ev}); }
@@ -870,6 +871,12 @@ export class Map {
             // (A rotate drag that pauses with the button down has not ended: MapLibre GL JS ends it once, at the release, #1873.)
             // (On the worker renderer the reports of a rotate drag can come after its release: the drag ends at the report
             // of its last turn, with one `moveend`, #2163.)
+            if (this.easedDuringDrag && this.moving && !e.moving && (e.seq ?? this.beganAt) >= this.beganAt) {
+                this.easedDuringDrag = false;
+                this.settle();
+                // (The drag is not over: its release fires `dragend` and the `moveend` of the drag.)
+                this.moving = this.dragging;
+            }
             if (this.moving && !e.moving && (e.seq ?? this.beganAt) >= this.beganAt && !this.dragging && !this.awaitingInertia && !this.dragRotate.active && !this.turnPending()) this.settle();
         } else if (e.type === 'resource') {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
@@ -944,6 +951,7 @@ export class Map {
                 for (const sourceId of Object.keys(this.rawStyle?.sources ?? {})) this.loadedEvents(sourceId);
             }
             // (As in MapLibre GL JS, a video that plays, or a canvas source that plays, keeps the map from `idle`. A pause sends a frame, and then `idle` fires.)
+            if (this.queryStale.size) { this.queryStale.clear(); this.staleCleared(); }
             if (!this.videos || !this.videos.playing()) this.fire('idle');
         } else if (e.type === 'heights') {
             if (e.grid) this.heights.set(e.key, e.grid); else this.heights.delete(e.key);
@@ -1198,13 +1206,13 @@ export class Map {
         return this;
     }
     /**
-     * `offset` ([x, y] or {x, y}, CSS pixels) puts `center` at that distance from the center of the view, as in
+     * `aroundPoint` ([x, y], CSS pixels) keeps the place under that point where it is (the compat entry turns its option `around`, a position, into it). `offset` ([x, y] or {x, y}, CSS pixels) puts `center` at that distance from the center of the view, as in
      * MapLibre GL JS. `easing` maps the time (0 to 1) to the progress (0 to 1); it is sampled into a table of 65
      * values, because a function cannot be sent to the engine's worker.
      */
-    easeTo(o: CameraInput & {duration?: number; around?: [number, number]; offset?: PointLike; easing?: (t: number) => number}) {
+    easeTo(o: CameraInput & {duration?: number; aroundPoint?: [number, number]; offset?: PointLike; easing?: (t: number) => number}) {
         const fly = this.flight; this.flight = undefined;
-        const {zoom, bearing, pitch, around} = o;
+        const {zoom, bearing, pitch, aroundPoint: around} = o;
         let center = o.center;
         const padding = o.padding === undefined ? undefined : paddingOf(o.padding);
         if (o.offset) {
@@ -1235,13 +1243,30 @@ export class Map {
         const c: Command = {type: 'ease', duration, center: center && toLngLat(center), zoom, bearing, pitch, around, padding, easing, fly};
         this.post(c);
         this.eased = {c, at: performance.now()};
-        this.easeStarted();
+        this.easeStarted(c);
         return this;
     }
     /** @internal Called when `easeTo` has sent an animation (not a jump). The compat entry starts the movement here. */
-    protected easeStarted() {}
+    protected easeStarted(_c: Extract<Command, {type: 'ease'}>) {}
+    /**
+     * @internal Fires `zoomstart`, `rotatestart` and `pitchstart` in the call of an animation for the axes that it changes,
+     * after `movestart`, as MapLibre GL JS does (#2474). The reports of the engine then fire no second start.
+     */
+    protected startAxes(c: {zoom?: number; bearing?: number; pitch?: number; fly?: unknown}) {
+        const zoom = c.fly ? true : c.zoom !== undefined && c.zoom !== this.tr.zoom;
+        if (zoom && !this.zooming) { this.zooming = true; this.fire('zoomstart'); }
+        if (c.bearing !== undefined && c.bearing !== this.tr.bearing && !this.rotating) { this.rotating = true; this.fire('rotatestart'); }
+        if (c.pitch !== undefined && c.pitch !== this.tr.pitch && !this.pitching) { this.pitching = true; this.fire('pitchstart'); }
+    }
     /** @internal Starts a movement now, with `movestart`, instead of at the first report of the engine. */
-    protected begin() { this.beganAt = this.seq; if (!this.moving) { this.moving = true; this.fire('movestart'); } }
+    protected begin() { this.easedDuringDrag = false; this.beganAt = this.seq; if (!this.moving) { this.moving = true; this.fire('movestart'); } }
+    /**
+     * @internal An `easeTo` or `flyTo` during a drag, as in MapLibre GL JS: the drag goes on, `movestart` fires in the call
+     * for the ease, and the end of the ease fires `moveend` while the pointer is still down. The release then fires
+     * `dragend` and a second `moveend` (#2469).
+     */
+    protected beginDuringDrag() { if (!this.dragging || !this.moving) return; this.beganAt = this.seq; this.easedDuringDrag = true; this.fire('movestart'); }
+    private easedDuringDrag = false;
     /** The command that began the movement: a report of the engine from before it does not end the movement. */
     private beganAt = 0;
     /**
@@ -1252,7 +1277,9 @@ export class Map {
     flyTo(o: Parameters<Map['easeTo']>[0] & FlyOptions) {
         // (The options reach easeTo, also through the override of the compat entry, in this member.)
         this.flight = [o.curve ?? 1.42, o.speed ?? 1.2, o.screenSpeed ?? 0, o.minZoom ?? -99, o.maxDuration ?? 1e12, o.duration === undefined ? 1 : 0];
-        return this.easeTo({...o, duration: o.duration ?? 1});
+        // As in MapLibre GL JS, a flight has no `aroundPoint`: only the jump for reduced motion, which is an `easeTo`, keeps it.
+        const still = !(o as {essential?: boolean}).essential && matchMedia('(prefers-reduced-motion: reduce)').matches;
+        return this.easeTo({...o, aroundPoint: still ? o.aroundPoint : undefined, duration: o.duration ?? 1});
     }
     private flight?: number[];
     /** Stops the animation of the camera, where it is. */
@@ -1854,15 +1881,30 @@ export class Map {
     setPaintProperty(layerId: string, name: string, value: unknown) { return this.setProp('paint', layerId, name, value); }
     /** Sets the value of a layout property of a style layer. */
     setLayoutProperty(layerId: string, name: string, value: unknown) {
-        if (name === 'visibility') this.toggled.add(layerId);
+        if (name === 'visibility') { this.toggled.add(layerId); this.keepForQuery(layerId); }
         return this.setProp('layout', layerId, name, value);
+    }
+    /**
+     * The visibility and the filter that a layer had before the last `setLayoutProperty` of `visibility` or `setFilter`, until the next
+     * `idle`. MapLibre GL JS answers `queryRenderedFeatures` from the tiles that are drawn, which are built with the old
+     * values until the source reloads, so the query keeps using them until then (#2364).
+     */
+    private queryStale = new globalThis.Map<string, {visibility: unknown; filter: unknown}>();
+    /** @internal Only the compat entry keeps the old values (MapLibre GL JS behavior); the main API answers with the current ones. */
+    protected keepsOldQuery = false;
+    /** @internal Called when the old values of the queries are dropped at `idle`. */
+    protected staleCleared() {}
+    private keepForQuery(id: string) {
+        if (!this.keepsOldQuery) return;
+        const l = this.rawStyle?.layers.find((l: any) => l.id === id);
+        if (l && !this.queryStale.has(id)) this.queryStale.set(id, {visibility: l.layout?.visibility, filter: l.filter});
     }
     /** The layers that the page has hidden or shown. Their tiles are built also while they are hidden: the next change is at once. */
     private toggled = new Set<string>();
     /** The layers that the engine hides after the last style, as it reported them (#1032). */
     private hidden = new Set<string>();
     /** Sets the filter of a style layer. */
-    setFilter(layerId: string, filter: unknown) { return this.editStyle(s => { s.layers[this.layerIndex(s, layerId)].filter = filter; }); }
+    setFilter(layerId: string, filter: unknown) { this.keepForQuery(layerId); return this.editStyle(s => { s.layers[this.layerIndex(s, layerId)].filter = filter; }); }
 
     /**
      * Adds the style sheet of the container, the controls and the message of `cannotShow` to the root node of the
@@ -2145,9 +2187,10 @@ export class Map {
             const a = anchor === 'viewport' ? 0 : -this.tr.bearing * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
             return [x * c - y * s, x * s + y * c];
         };
-        const sets = layers.filter(l => l.source && (!only || only.has(l.id)) && l.layout?.visibility !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24)
+        const was = (l: any) => this.queryStale.get(l.id);
+        const sets = layers.filter(l => l.source && (!only || only.has(l.id)) && (was(l) ? was(l)!.visibility : l.layout?.visibility) !== 'none' && z >= (l.minzoom ?? 0) && z < (l.maxzoom ?? 24)
             && this.rawStyle.sources[l.source] && !/raster|image/.test(this.rawStyle.sources[l.source].type) && !/raster|hillshade|heatmap/.test(l.type)).map(l => ({
-            layer: l.id as string, source: l.source as string, sourceLayer: l['source-layer'] as string | undefined, filter: l.filter, also: options.filter,
+            layer: l.id as string, source: l.source as string, sourceLayer: l['source-layer'] as string | undefined, filter: was(l) ? was(l)!.filter : l.filter, also: options.filter,
             // How far from its geometry a feature is drawn, in pixels: half the line width, the circle radius, a part of an icon or text.
             radius: l.type === 'line' ? lineReach(number(l.paint?.['line-width'], 1), number(l.paint?.['line-gap-width'], 0)) : l.type === 'circle' ? number(l.paint?.['circle-radius'], 5) + number(l.paint?.['circle-stroke-width'], 0) : l.type === 'symbol' ? 10 : 0,
             size: size(l),
@@ -2211,10 +2254,10 @@ export class Map {
      * reports it in a later frame, which can come after the release (#2152). */
     turnPending() { return this.reported < this.turned; }
     /** @internal Ends the movement that runs now, with its end events (the compat entry's `jumpTo` stops it so, #2340). */
-    protected halt() { this.awaitingInertia = false; if (this.moving) this.settle(); }
+    protected halt() { this.awaitingInertia = false; this.easedDuringDrag = false; if (this.moving) this.settle(); }
     /** Ends a movement: the end events of zoom, rotate and pitch, then `moveend`. */
     private settle() {
-        this.moving = false;
+        this.moving = false; this.easedDuringDrag = false;
         this.eased = undefined; // (the ease, if one ran, has ended: a restart does not run it again)
         if (this.zooming) { this.zooming = false; this.fire('zoomend'); }
         if (this.rotating) { this.rotating = false; this.fire('rotateend'); }
@@ -2477,7 +2520,7 @@ export class Map {
             const now = performance.now();
             if (gesture) {
                 // Two fingers down and up again quickly, without moving: zoom out.
-                if (gesture.mode === 'undecided' && now - gesture.t0 < 300 && gesture.travel < 12 && this.touchZoomRotate.isEnabled()) this.easeTo({zoom: this.tr.zoom - 1, around: [gesture.mid.x, gesture.mid.y], duration: 300});
+                if (gesture.mode === 'undecided' && now - gesture.t0 < 300 && gesture.travel < 12 && this.touchZoomRotate.isEnabled()) this.easeTo({zoom: this.tr.zoom - 1, aroundPoint: [gesture.mid.x, gesture.mid.y], duration: 300});
                 gesture = null;
                 suppressClick = true; // the finger still down must not pan-fling or click when it lifts
                 samples = [];
@@ -2493,7 +2536,7 @@ export class Map {
                     // (The zoom waits for the listeners of `dblclick`, which the compat entry calls later: see `mouseEvent`.)
                     // (`doubleClickZoom.isActive()` is true until the next task, as in MapLibre GL JS.)
                     if (this.doubleClickZoom.isEnabled()) { this.doubleClickZoom.active = true; setTimeout(() => { this.doubleClickZoom.active = false; }); }
-                    const {x, y} = tapDrag, zoom = () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + 1, around: [x, y], duration: 300}); };
+                    const {x, y} = tapDrag, zoom = () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + 1, aroundPoint: [x, y], duration: 300}); };
                     if (e.type === 'blur') zoom(); else mouseEvent('dblclick', e, {}, zoom);
                 }
                 tapDrag = null;
@@ -2509,7 +2552,7 @@ export class Map {
             if (spin) this.easeTo({bearing: this.spinBearing(last.x + spin.bearing), pitch: last.y + spin.pitch, duration: spin.duration, easing: bezier(0, 0, 0.3, 1)});
             // A rotate drag released after a pause ends here; one released while the engine still turns ends at its next report.
             else if (rotating && this.moving && !this.engineMoving && !this.dragging && !this.turnPending()) this.settle();
-            if (wasDragging && !rotating) {
+            if (wasDragging && !rotating && !this.easedDuringDrag) {
                 // Inertia as in MapLibre GL JS (see `inertiaSpan`): in the next frame, the movement of the last 60 ms of
                 // frames over the time up to that frame, so that a pointer that slowed or stopped before the release
                 // gives less or none (#479).
@@ -2573,7 +2616,7 @@ export class Map {
             if (e.shiftKey) value /= 4;
             if (wheelKind && value) send(value);
         }, {passive: false});
-        listen('dblclick', e => { if (lastPointerType === 'touch') return; /* touch double-taps are handled above, uniformly across browsers */ const p = pos(e); mouseEvent('dblclick', e, {}, () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + (e.shiftKey ? -1 : 1), around: [p.x, p.y], duration: 300}); }); });
+        listen('dblclick', e => { if (lastPointerType === 'touch') return; /* touch double-taps are handled above, uniformly across browsers */ const p = pos(e); mouseEvent('dblclick', e, {}, () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + (e.shiftKey ? -1 : 1), aroundPoint: [p.x, p.y], duration: 300}); }); });
         listen('contextmenu', e => { e.preventDefault(); mouseEvent('contextmenu', e); });
         listen('pointerenter', e => { if (e.pointerType === 'mouse') mouseEvent('mouseover', e); });
         listen('pointerleave', e => { if (e.pointerType === 'mouse') mouseEvent('mouseout', e); });

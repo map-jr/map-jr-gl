@@ -161,62 +161,64 @@ export function renderSVG(s: SVGScene): string {
                 }
                 continue;
             }
-            const b = it.tile.layers[L.id];
-            if (!b) continue;
-            const n = b.geom.featEnds.length;
-            // Features that end up looking identical share one <path>.
-            const groups = new Map<string, string>();
-            const styleOf = (f: number) => {
-                const col = b.color ? hex(b.color.subarray(f * 4, f * 4 + 3), 1) : hex(uniform!);
-                const a = (b.color ? b.color[f * 4 + 3] / 255 : uniform![3]) * opacity;
-                return [col, a] as const;
-            };
-            if (b.type === 'circle') {
-                const sw = p.strokeWidth.eval(zoom), sc = p.strokeColor.eval(zoom) as RGBA;
-                const stroke = sw > 0 ? ` stroke="${hex(sc)}" stroke-width="${num(sw)}"${alpha('stroke-opacity', sc[3] * (p.strokeOpacity.dd ? 1 : p.strokeOpacity.eval(zoom)))}` : '';
-                const {coords, ringEnds, featEnds} = b.geom;
-                for (let f = 0, r = 0; f < n; f++) {
-                    const [col, a] = styleOf(f), radius = (b.radius ? b.radius[f] : p.radius.eval(zoom)) + sw / 2;
-                    if (a <= 0 && !stroke) { r = featEnds[f]; continue; }
-                    for (; r < featEnds[f]; r++) {
-                        const i = ringEnds[r] - 1, tx = coords[i * 2], ty = coords[i * 2 + 1];
-                        if (tx < it.clip[0] || ty < it.clip[1] || tx >= it.clip[2] || ty >= it.clip[3]) continue;
-                        const [x, y] = apply(it.matrix, tx, ty);
-                        body.push(`<circle cx="${num(x)}" cy="${num(y)}" r="${num(radius)}" fill="${col}"${alpha('fill-opacity', a)}${stroke}/>`);
+            // A layer has a batch for each image or dasharray when its pattern or its line-dasharray has a value for each
+            // feature (see `patternKey` of tile.ts, whose keys these are).
+            for (let k = 0, b: Batch; (b = it.tile.layers[k ? L.id + '\0' + k : L.id]); k++) {
+                const n = b.geom.featEnds.length;
+                // Features that end up looking identical share one <path>.
+                const groups = new Map<string, string>();
+                const styleOf = (f: number) => {
+                    const col = b.color ? hex(b.color.subarray(f * 4, f * 4 + 3), 1) : hex(uniform!);
+                    const a = (b.color ? b.color[f * 4 + 3] / 255 : uniform![3]) * opacity;
+                    return [col, a] as const;
+                };
+                if (b.type === 'circle') {
+                    const sw = p.strokeWidth.eval(zoom), sc = p.strokeColor.eval(zoom) as RGBA;
+                    const stroke = sw > 0 ? ` stroke="${hex(sc)}" stroke-width="${num(sw)}"${alpha('stroke-opacity', sc[3] * (p.strokeOpacity.dd ? 1 : p.strokeOpacity.eval(zoom)))}` : '';
+                    const {coords, ringEnds, featEnds} = b.geom;
+                    for (let f = 0, r = 0; f < n; f++) {
+                        const [col, a] = styleOf(f), radius = (b.radius ? b.radius[f] : p.radius.eval(zoom)) + sw / 2;
+                        if (a <= 0 && !stroke) { r = featEnds[f]; continue; }
+                        for (; r < featEnds[f]; r++) {
+                            const i = ringEnds[r] - 1, tx = coords[i * 2], ty = coords[i * 2 + 1];
+                            if (tx < it.clip[0] || ty < it.clip[1] || tx >= it.clip[2] || ty >= it.clip[3]) continue;
+                            const [x, y] = apply(it.matrix, tx, ty);
+                            body.push(`<circle cx="${num(x)}" cy="${num(y)}" r="${num(radius)}" fill="${col}"${alpha('fill-opacity', a)}${stroke}/>`);
+                        }
                     }
+                    continue;
                 }
-                continue;
+                const fill = b.type === 'fill';
+                const gap = fill ? 0 : p.gap.eval(zoom), dash = fill ? null : b.dash ? (b.dash.length ? b.dash : null) : p.dash.eval(zoom) as number[] | null;
+                const oc = fill && p.outline ? p.outline.eval(zoom) as RGBA : null;
+                const outline = oc && oc[3] > 0 ? ` stroke="${hex(oc)}" stroke-width="1"${alpha('stroke-opacity', oc[3] * opacity)}` : '';
+                if (gap > 0) { if (!hollow.has(L.id)) { hollow.add(L.id); s.skipped?.(L.id, 'hollow lines (line-gap-width)'); } continue; } // a hollow stroke has no simple SVG equivalent; rare enough to leave to the client
+                // The viewport in this tile's coordinates (plus a margin for stroke widths), to skip what is off screen.
+                const [a, bb, c, dd, e, ff] = it.matrix, det = a * dd - bb * c, pad = 24 / it.scale;
+                const corners = [[0, 0], [tr.width, 0], [0, tr.height], [tr.width, tr.height]].map(([x, y]) =>
+                    [(dd * (x - e) - c * (y - ff)) / det, (-bb * (x - e) + a * (y - ff)) / det]);
+                const box = [Math.min(...corners.map(p => p[0])) - pad, Math.min(...corners.map(p => p[1])) - pad,
+                    Math.max(...corners.map(p => p[0])) + pad, Math.max(...corners.map(p => p[1])) + pad];
+                const unitsPerPx = 1 / (it.scale * Q), minSize = (L.ssr?.minSize ?? 0.8) * unitsPerPx, tol = (L.ssr?.simplify ?? 0.6) * unitsPerPx;
+                for (let f = 0; f < n; f++) {
+                    const [col, a] = styleOf(f), w = fill ? 0 : b.width ? b.width[f] : p.width.eval(zoom);
+                    if (fill ? a <= 0 && !outline : a <= 0 || w <= 0) continue;
+                    const key = fill ? `fill="${col}"${alpha('fill-opacity', a)}${outline}`
+                        : `stroke="${col}" stroke-width="${num(w)}"${alpha('stroke-opacity', a * Math.min(1, w))}` +
+                            (dash ? ` stroke-dasharray="${dash.map(d => num(d * Math.max(w, 0.5))).join(' ')}"` : '');
+                    const cap = dash && b.cap === 'square' ? {half: w / 2 * unitsPerPx, pat: dash.map(d => d * Math.max(w, 0.5)), px: it.scale * Q, e: ''} : undefined;
+                    const d = pathData(b, f, fill, box, minSize, tol, cap, fill ? 0 : (b.offset ? b.offset[f] : p.offset.eval(zoom)) / it.scale);
+                    if (d) groups.set(key, (groups.get(key) ?? '') + d);
+                    if (cap?.e) { const k2 = `stroke="${col}" stroke-width="${num(w)}"${alpha('stroke-opacity', a * Math.min(1, w))}`; groups.set(k2, (groups.get(k2) ?? '') + cap.e); }
+                }
+                if (!groups.size) continue;
+                const m = it.matrix.map((v, i) => i < 4 ? +(v * Q).toFixed(6) : +v.toFixed(2));
+                // SVG puts the cap on every dash. As in MapLibre GL JS, the dashes of a line with a square cap are butt dashes (#2175).
+                body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${fill ? '' : ` fill="none"${b.cap === 'round' || b.cap === 'square' && !dash ? ` stroke-linecap="${b.cap}"` : ''}${b.join === 'round' || b.join === 'bevel' ? ` stroke-linejoin="${b.join}"` : ` stroke-miterlimit="${num(+(b.miterLimit ?? 2) || 2)}"`}`}>`);
+                for (const [attrs, d] of groups) if (d && !fill) { lines.push([body.length, attrs, d]); seen.set(d, (seen.get(d) ?? 0) + 1); body.push(''); }
+                else if (d) body.push(`<path ${attrs}${fill && !outline ? '' : ' vector-effect="non-scaling-stroke"'} d="${d}"/>`);
+                body.push('</g>');
             }
-            const fill = b.type === 'fill';
-            const gap = fill ? 0 : p.gap.eval(zoom), dash = fill ? null : p.dash.eval(zoom) as number[] | null;
-            const oc = fill && p.outline ? p.outline.eval(zoom) as RGBA : null;
-            const outline = oc && oc[3] > 0 ? ` stroke="${hex(oc)}" stroke-width="1"${alpha('stroke-opacity', oc[3] * opacity)}` : '';
-            if (gap > 0) { if (!hollow.has(L.id)) { hollow.add(L.id); s.skipped?.(L.id, 'hollow lines (line-gap-width)'); } continue; } // a hollow stroke has no simple SVG equivalent; rare enough to leave to the client
-            // The viewport in this tile's coordinates (plus a margin for stroke widths), to skip what is off screen.
-            const [a, bb, c, dd, e, ff] = it.matrix, det = a * dd - bb * c, pad = 24 / it.scale;
-            const corners = [[0, 0], [tr.width, 0], [0, tr.height], [tr.width, tr.height]].map(([x, y]) =>
-                [(dd * (x - e) - c * (y - ff)) / det, (-bb * (x - e) + a * (y - ff)) / det]);
-            const box = [Math.min(...corners.map(p => p[0])) - pad, Math.min(...corners.map(p => p[1])) - pad,
-                Math.max(...corners.map(p => p[0])) + pad, Math.max(...corners.map(p => p[1])) + pad];
-            const unitsPerPx = 1 / (it.scale * Q), minSize = (L.ssr?.minSize ?? 0.8) * unitsPerPx, tol = (L.ssr?.simplify ?? 0.6) * unitsPerPx;
-            for (let f = 0; f < n; f++) {
-                const [col, a] = styleOf(f), w = fill ? 0 : b.width ? b.width[f] : p.width.eval(zoom);
-                if (fill ? a <= 0 && !outline : a <= 0 || w <= 0) continue;
-                const key = fill ? `fill="${col}"${alpha('fill-opacity', a)}${outline}`
-                    : `stroke="${col}" stroke-width="${num(w)}"${alpha('stroke-opacity', a * Math.min(1, w))}` +
-                        (dash ? ` stroke-dasharray="${dash.map(d => num(d * Math.max(w, 0.5))).join(' ')}"` : '');
-                const cap = dash && b.cap === 'square' ? {half: w / 2 * unitsPerPx, pat: dash.map(d => d * Math.max(w, 0.5)), px: it.scale * Q, e: ''} : undefined;
-                const d = pathData(b, f, fill, box, minSize, tol, cap, fill ? 0 : (b.offset ? b.offset[f] : p.offset.eval(zoom)) / it.scale);
-                if (d) groups.set(key, (groups.get(key) ?? '') + d);
-                if (cap?.e) { const k2 = `stroke="${col}" stroke-width="${num(w)}"${alpha('stroke-opacity', a * Math.min(1, w))}`; groups.set(k2, (groups.get(k2) ?? '') + cap.e); }
-            }
-            if (!groups.size) continue;
-            const m = it.matrix.map((v, i) => i < 4 ? +(v * Q).toFixed(6) : +v.toFixed(2));
-            // SVG puts the cap on every dash. As in MapLibre GL JS, the dashes of a line with a square cap are butt dashes (#2175).
-            body.push(`<g transform="matrix(${m.join(' ')})" clip-path="url(#${clipIds.get(it)})"${fill ? '' : ` fill="none"${b.cap === 'round' || b.cap === 'square' && !dash ? ` stroke-linecap="${b.cap}"` : ''}${b.join === 'round' || b.join === 'bevel' ? ` stroke-linejoin="${b.join}"` : ` stroke-miterlimit="${num(+(b.miterLimit ?? 2) || 2)}"`}`}>`);
-            for (const [attrs, d] of groups) if (d && !fill) { lines.push([body.length, attrs, d]); seen.set(d, (seen.get(d) ?? 0) + 1); body.push(''); }
-            else if (d) body.push(`<path ${attrs}${fill && !outline ? '' : ' vector-effect="non-scaling-stroke"'} d="${d}"/>`);
-            body.push('</g>');
         }
     }
 
@@ -292,8 +294,8 @@ export function renderSVG(s: SVGScene): string {
                     pen += a + src.spacing * l.size;
                 });
                 // Rich text: a line is drawn in the size of its largest section (sizes inside a line are not drawn).
-                const own = line.scale && line.scale !== 1 ? ` style="font-size:${num(l.size * line.scale)}px"` : '';
-                body.push(`<text x="${num(x)}" y="${num(y)}"${rot}${own} ${common}>${escapeXML(line.text.replace(/[\uE000-\uF8FF]/g, ''))}</text>`);
+                const own = line.scale && line.scale !== 1 ? common.replace(/^font-size="[^"]*"/, `font-size="${num(l.size * line.scale)}"`) : common;
+                body.push(`<text x="${num(x)}" y="${num(y)}"${rot} ${own}>${escapeXML(line.text.replace(/[\uE000-\uF8FF]/g, ''))}</text>`);
             });
         }
         body.push('</g>');

@@ -258,6 +258,38 @@ for (const mode of renderers) {
     check(`[${mode}] paint transitions: text-translate and icon-translate move a label over their transition with no camera move (#2478)`,
         movedLabels.start?.every(v => v !== null) && movedLabels.middle.every(Boolean) && movedLabels.end.every((v, k) => Math.abs(v - movedLabels.start[k] - 100) <= 2), JSON.stringify(movedLabels));
 
+    // `text-translate` moves text that follows its line (`symbol-placement: line`) as it moves text at a point, as MapLibre
+    // GL JS moves each point of the line by it (#2519): before, the glyphs along the line stayed in place. The white
+    // text is found by the first and last row of its pixels, without and with a translate of 40 pixels down.
+    const lineTranslate = await (async () => {
+        const out = {};
+        for (const t of [0, 40]) {
+            await page.evaluate(async ([renderer, t]) => {
+                const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), style = await (await fetch('/style.json')).json();
+                const el = window.lineTextEl = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:300px;z-index:99999'}));
+                const font = style.layers.find(l => l.layout?.['text-font'])?.layout['text-font'];
+                const m = window.lineTextMap = new mod.Map({container: el, renderer, center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8, glyphs: style.glyphs,
+                    sources: {l: {type: 'geojson', data: {type: 'LineString', coordinates: [[-60, 0], [60, 0]]}}},
+                    layers: [{id: 'bg', type: 'background', paint: {'background-color': '#000'}},
+                        {id: 't', type: 'symbol', source: 'l', layout: {'symbol-placement': 'line', 'text-field': 'WWWWW', 'text-font': font, 'text-size': 20, 'text-allow-overlap': true},
+                            paint: {'text-color': '#fff', 'text-translate': [0, t]}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 15000); });
+            }, [mode, t]);
+            await page.waitForTimeout(300);
+            out[t] = await page.evaluate(async png => {
+                const bmp = await createImageBitmap(await (await fetch('data:image/png;base64,' + png)).blob()), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+                c.drawImage(bmp, 0, 0);
+                const d = c.getImageData(0, 0, bmp.width, bmp.height).data; let y0 = null, y1 = null;
+                for (let i = 0; i < d.length; i += 4) if (d[i] > 128) { const y = Math.floor(i / 4 / bmp.width); y0 ??= y; y1 = y; }
+                window.lineTextMap.remove(); window.lineTextEl.remove();
+                return [y0, y1];
+            }, (await page.screenshot({clip: {x: 0, y: 0, width: 400, height: 300}})).toString('base64'));
+        }
+        return out;
+    })().catch(e => ({error: String(e)}));
+    check(`[${mode}] text-translate moves text along a line as it moves text at a point (#2519)`,
+        lineTranslate[0]?.[0] !== null && lineTranslate[40]?.every((v, k) => v !== null && Math.abs(v - lineTranslate[0][k] - 40) <= 1), JSON.stringify(lineTranslate));
+
     // The array of queryRenderedFeatures that is read without `await` keeps its features after a change of the style that
     // does not change tile data (setPaintProperty, setStyle with a diff), as in MapLibre GL JS (#817).
     {
@@ -288,6 +320,28 @@ for (const mode of renderers) {
         }, mode).catch(e => ({error: String(e)}));
         check(`[${mode}] compat: the array of queryRenderedFeatures keeps its features after setPaintProperty and setStyle with a diff, and after setData of another source (#817)`,
             kept.first > 0 && kept.paint === kept.first && kept.diff === kept.first && kept.before > 0 && kept.filterNow === kept.before && kept.filterIdle === 0 && kept.again === kept.before && kept.otherData === kept.before && kept.refreshed === 0, JSON.stringify(kept));
+    }
+
+    // As in MapLibre GL JS, a layer that is hidden, or whose filter changes, keeps the features it was drawn with for a query
+    // until the tiles have loaded again (idle); then the query answers with the new values (#2364).
+    {
+        const stale = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js'), style = await (await fetch('/style.json')).json();
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:50'}));
+            const m = new mod.Map({container: el, style, center: [10, 45], zoom: 3, renderer, attributionControl: false});
+            const idle = () => new Promise(r => { m.once('idle', r); setTimeout(r, 15000); }), out = {};
+            const id = style.layers.find(l => l.type === 'fill').id, q = async () => (await m.queryRenderedFeatures(undefined, {layers: [id]})).length;
+            await idle(); out.before = await q();
+            m.setLayoutProperty(id, 'visibility', 'none'); out.hiddenNow = await q();
+            await idle(); out.hiddenIdle = await q();
+            m.setLayoutProperty(id, 'visibility', 'visible'); await idle(); out.shown = await q();
+            m.setFilter(id, ['==', ['get', 'no-such-property'], 1]); out.filterNow = await q();
+            await idle(); out.filterIdle = await q();
+            m.remove(); el.remove();
+            return out;
+        }, mode).catch(e => ({error: String(e)}));
+        check(`[${mode}] compat: queryRenderedFeatures after setLayoutProperty visibility and setFilter answers with the old values until idle (#2364)`,
+            stale.before > 0 && stale.hiddenNow === stale.before && stale.hiddenIdle === 0 && stale.shown === stale.before && stale.filterNow === stale.before && stale.filterIdle === 0, JSON.stringify(stale));
     }
 
     // The globe (#463): a map with the projection globe draws a sphere (the corners of the canvas stay empty), places
@@ -436,6 +490,32 @@ for (const mode of renderers) {
             return result;
         }, mode);
         check(`[${mode}] the globe: queryRenderedFeatures finds an icon moved by icon-translate where it is drawn (#1822)`, moved.drawn[1] > 220 && moved.drawn[1] < 245 && moved.atDrawn === 1 && moved.atScreen === 0, JSON.stringify(moved));
+        // A line at 88° N or S is clamped to the edge of the world at 85.05°, and on the globe the tile of the first or the
+        // last row also draws the half of its width that lies in the cap of the pole, as MapLibre GL JS 6.17 does (#2307).
+        // The line was half as wide before (396 pixels of ink, and 797 in MapLibre). On Mercator the edge of the world
+        // still clips it, and a line at 84° is not affected.
+        const poleLine = (lib, proj, lat) => page.evaluate(async ([lib, renderer, proj, lat]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:300px;height:300px;z-index:60'}));
+            const coords = Array.from({length: 73}, (_, i) => [-180 + i * 5, lat]);
+            const style = {version: 8, projection: {type: proj}, sources: {s: {type: 'geojson', data: {type: 'LineString', coordinates: coords}}},
+                layers: [{id: 'bg', type: 'background', paint: {'background-color': '#000'}}, {id: 'l', type: 'line', source: 's', paint: {'line-color': '#fff', 'line-width': 2}}]};
+            const map = new mod.Map({container: el, style, center: [0, Math.sign(lat) * 85], zoom: 2, renderer, attributionControl: false, canvasContextAttributes: {preserveDrawingBuffer: true}});
+            await new Promise(r => { map.once('idle', r); setTimeout(r, 15000); });
+            const blob = lib === 'ml' ? await (await fetch(map.getCanvas().toDataURL())).blob() : await map.toBlob();
+            const bmp = await createImageBitmap(blob), c = Object.assign(document.createElement('canvas'), {width: bmp.width, height: bmp.height}).getContext('2d');
+            c.drawImage(bmp, 0, 0);
+            const d = c.getImageData(0, 0, bmp.width, bmp.height).data;
+            let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 60) n++;
+            map.remove(); el.remove();
+            return n;
+        }, [lib, mode, proj, lat]).catch(e => String(e));
+        const poleInk = {};
+        for (const [proj, lat] of [['globe', 88], ['globe', -88], ['globe', 84], ['mercator', 88]]) for (const lib of ['ours', 'ml']) poleInk[`${lib} ${proj} ${lat}`] = await poleLine(lib, proj, lat);
+        check(`[${mode}] the globe: a line north of 85.05° N or south of 85.05° S has the width of MapLibre GL JS within 2%, and Mercator clips it at the edge of the world (#2307)`,
+            ['globe 88', 'globe -88', 'globe 84', 'mercator 88'].every(k => poleInk['ml ' + k] > 200 && Math.abs(poleInk['ours ' + k] - poleInk['ml ' + k]) <= poleInk['ml ' + k] * 0.02)
+            && poleInk['ml globe 88'] > poleInk['ml mercator 88'] * 2, JSON.stringify(poleInk));
         // On a pitched Mercator map icon-translate moves the point in tile units, as in MapLibre GL JS: [0, 60] at pitch 60
         // moves the icon about 27 pixels down the screen, not 60 (#2021). The anchor `viewport` does the same.
         const pitched = await page.evaluate(async renderer => {
@@ -568,7 +648,7 @@ for (const mode of renderers) {
             const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             await new Promise(r => m.once('load', r));
             const log = [];
-            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || (t !== 'move' && t !== 'zoom')) log.push(t); });
             m.easeTo({center: [20, 50], duration: 2000});
             await new Promise(r => setTimeout(r, 500));
             log.push('|stop'); m.stop(); log.push('|stopret');
@@ -587,7 +667,7 @@ for (const mode of renderers) {
             const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             await new Promise(r => m.once('load', r));
             const log = [];
-            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || (t !== 'move' && t !== 'zoom')) log.push(t); });
             m.easeTo({center: [20, 50], duration: 2000});
             await new Promise(r => setTimeout(r, 500));
             log.push('|call2'); m[second]({center: [30, 55], duration: 1000}); log.push('|ret2');
@@ -599,6 +679,49 @@ for (const mode of renderers) {
             const ours = await easeOrder('ours', second), ml = await easeOrder('ml', second);
             check(`[${mode}] ${second} during an easeTo fires moveend and movestart inside the call, as in MapLibre GL JS (#2392)`,
                 ours === ml && ml.startsWith('|call2 moveend movestart |ret2'), JSON.stringify({ours, ml}));
+        }
+        // An easeTo or flyTo during a drag fires movestart inside the call, and the drag goes on: the ease fires moveend, and
+        // the release fires dragend and a second moveend, as in MapLibre GL JS (#2469). The zoom events fire in the call too (#2474).
+        const dragEase = (lib, second, early) => page.evaluate(async ([lib, renderer, second, early]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const log = [], c = m.getCanvas(), frame = () => new Promise(r => requestAnimationFrame(() => r()));
+            for (const t of ['movestart', 'zoomstart', 'dragstart', 'dragend', 'move', 'zoom', 'zoomend', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || (t !== 'move' && t !== 'zoom')) log.push(t); });
+            const send = (type, [x, y]) => {
+                const o = {bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse', isPrimary: true, view: window};
+                c.dispatchEvent(lib === 'ml' ? new MouseEvent(type.replace('pointer', 'mouse'), o) : new PointerEvent(type, o));
+            };
+            send('pointerdown', [100, 100]); await frame();
+            for (let i = 1; i < 8; i++) { send('pointermove', [100 + i * 8, 100]); await frame(); }
+            await new Promise(r => setTimeout(r, 200));
+            log.push('|call'); m[second]({center: [30, 55], zoom: 6, duration: early ? 3000 : 300}); log.push('|ret');
+            // (`early`: the pointer lifts while the ease still runs.)
+            // (It waits for the first `zoom` of the ease, not for a time: the report of the engine can come late. When the ease
+            // has ended by then, the attempt is void and the caller tries again.)
+            if (early) {
+                for (let i = 0; i < 200 && !log.slice(log.indexOf('|call')).includes('zoom'); i++) await new Promise(r => setTimeout(r, 25));
+                if (log.slice(log.indexOf('|call')).includes('moveend')) { m.remove(); el.remove(); return 'RETRY'; }
+            } else for (let i = 0; i < 100 && !log.slice(log.indexOf('|call')).includes('moveend'); i++) await new Promise(r => setTimeout(r, 50));
+            await new Promise(r => setTimeout(r, 100));
+            send('pointerup', [200, 120]);
+            if (early) for (let i = 0; i < 200 && log.slice(log.indexOf('|call')).filter(t => t === 'moveend').length < 2; i++) await new Promise(r => setTimeout(r, 25));
+            else await new Promise(r => setTimeout(r, 600));
+            m.remove(); el.remove();
+            // (The number of frames differs between runs: a run of `move zoom` counts once.)
+            return log.slice(log.indexOf('|call')).join(' ').replace(/(move zoom)( move zoom)*/g, '$1');
+        }, [lib, mode, second, early]).catch(e => String(e));
+        for (const second of ['easeTo', 'flyTo']) {
+            const ours = await dragEase('ours', second), ml = await dragEase('ml', second);
+            check(`[${mode}] ${second} during a drag fires movestart inside the call and moveend, dragend and moveend after it, as in MapLibre GL JS (#2469)`,
+                ours === ml && ml === '|call movestart zoomstart |ret move zoom zoomend moveend dragend moveend', JSON.stringify({ours, ml}));
+            // The release during the ease fires the `moveend` of the drag, and the ease goes on without a second `movestart`.
+            const attempt = async lib => { let out; for (let i = 0; i < 4 && (i === 0 || out === 'RETRY'); i++) out = await dragEase(lib, second, true); return out; };
+            const earlyOurs = await attempt('ours'), earlyMl = await attempt('ml');
+            check(`[${mode}] ${second} during a drag, released while it runs, fires dragend and moveend and then the rest of the ease with no second movestart, as in MapLibre GL JS (#2469)`,
+                earlyOurs === earlyMl && earlyMl === '|call movestart zoomstart |ret move zoom dragend moveend move zoom zoomend moveend', JSON.stringify({earlyOurs, earlyMl}));
         }
         // resize() fires movestart, move, resize and moveend inside the call, also for an unchanged size, and the observer of
         // the container fires them once more after a change of the size, as in MapLibre GL JS (#2395).
@@ -630,8 +753,7 @@ for (const mode of renderers) {
             await new Promise(r => m.once('load', r));
             const log = [];
             for (const t of ['movestart', 'zoomstart', 'move', 'zoom', 'zoomend', 'moveend']) m.on(t, () => log.push(t));
-            // (MapLibre GL JS reads `around` as a position, and this entry reads a point of the screen in CSS pixels.)
-            m.easeTo({zoom: 5, duration: 0, around: lib === 'ml' ? m.unproject([100, 100]) : [100, 100]});
+            m.easeTo({zoom: 5, duration: 0, around: m.unproject([100, 100])});
             const sync = log.join(' '), c = m.getCenter(), z = m.getZoom();
             await new Promise(r => setTimeout(r, 800));
             m.remove(); el.remove();
@@ -640,6 +762,33 @@ for (const mode of renderers) {
         const aroundOurs = await aroundJump('ours'), aroundMl = await aroundJump('ml');
         check(`[${mode}] easeTo with around and duration 0 fires its events once, inside the call, as in MapLibre GL JS (#2394)`,
             aroundOurs === aroundMl && aroundMl.startsWith('movestart zoomstart move zoom zoomend moveend [') && aroundMl.endsWith(' 6'), JSON.stringify({aroundOurs, aroundMl}));
+        // `around` of easeTo is a position (any form of LngLatLike), not a point of the screen, and flyTo ignores it:
+        // the center after the move is the one of MapLibre GL JS (#2424).
+        const aroundAt = (lib, how, pg = page) => pg.evaluate(async ([lib, renderer, how]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const done = new Promise(r => m.once('moveend', r));
+            if (how === 'ease') m.easeTo({zoom: 5, duration: 0, around: [20, 20]});
+            else if (how === 'easeAnimated') m.easeTo({zoom: 5, duration: 200, around: {lng: 20, lat: 20}});
+            else if (how === 'fly') m.flyTo({zoom: 5, duration: 200, around: [20, 20], essential: true}); // (a flight ignores `around`)
+            else m.flyTo({zoom: 5, around: [20, 20]}); // (with reduced motion, flyTo is an easeTo, which reads `around`)
+            await done;
+            const c = m.getCenter(), z = m.getZoom();
+            m.remove(); el.remove();
+            return [+z.toFixed(3), +c.lng.toFixed(2), +c.lat.toFixed(2)];
+        }, [lib, mode, how]).catch(e => String(e));
+        for (const how of ['ease', 'easeAnimated', 'fly', 'flyReduced']) {
+            // (MapLibre GL JS reads the preference when its module loads, so the reduced-motion case has a page of its own.)
+            const pg = how === 'flyReduced' ? await browser.newPage({reducedMotion: 'reduce'}) : page;
+            if (pg !== page) { await pg.goto(`${origin}/?renderer=${mode}`); await pg.waitForFunction(() => window.mapLoaded, null, {timeout: 30000}); }
+            const [o, ml] = [await aroundAt('ours', how, pg), await aroundAt('ml', how, pg)];
+            if (pg !== page) await pg.close();
+            check(`[${mode}] ${how} with around as a position (flyTo ignores it) ends at the center of MapLibre GL JS (#2424)`,
+                Array.isArray(o) && Array.isArray(ml) && o.every((v, i) => Math.abs(v - ml[i]) < 0.02), JSON.stringify({o, ml}));
+        }
         // An easeTo or flyTo with no movement running fires movestart inside the call, also right after a jumpTo and for an
         // ease that leaves the view as it is, and the movement does not end before the animation, as in MapLibre GL JS (#2451).
         const firstEase = (lib, scenario) => page.evaluate(async ([lib, renderer, scenario]) => {
@@ -650,7 +799,7 @@ for (const mode of renderers) {
             await new Promise(r => m.once('load', r));
             await new Promise(r => setTimeout(r, 300));
             const log = [];
-            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || (t !== 'move' && t !== 'zoom')) log.push(t); });
             if (scenario === 'afterJump') m.jumpTo({center: [12, 46]});
             log.push('|call');
             if (scenario === 'flyTo') m.flyTo({center: [20, 50], duration: 600});
@@ -673,7 +822,7 @@ for (const mode of renderers) {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
             const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             await new Promise(r => m.once('load', r));
-            const log = []; for (const t of ['movestart', 'move', 'moveend', 'dragstart', 'drag', 'dragend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            const log = []; for (const t of ['movestart', 'move', 'moveend', 'dragstart', 'drag', 'dragend']) m.on(t, () => { if (log.at(-1) !== t || (t !== 'move' && t !== 'zoom')) log.push(t); });
             const marker = new mod.Marker().setLngLat([10, 45]).addTo(m).getElement();
             const c = m.getCanvas(), frame = () => new Promise(r => requestAnimationFrame(() => r()));
             const send = (type, [x, y]) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse', isPrimary: true}));
@@ -6320,6 +6469,35 @@ for (const mode of renderers) {
             return {flat: await red(false), terrain: await red(true)};
         }, mode);
         check(`[${mode}] the globe with 3D terrain: the area at the pole is drawn (#1984)`, r.flat > 50000 && Math.abs(r.terrain - r.flat) < r.flat * 0.01, JSON.stringify(r));
+    }
+    // #2013: with 3D terrain on flat ground (0 m), fill-translate draws as without terrain: a square across the corner of
+    // four tiles is moved 100 px down the screen (anchor viewport, bearing 45, pitch 30, a zoom between levels), whole.
+    // Before, the picture of each ground tile moved it by pixels of the picture and along the axes of the map (75 px off).
+    {
+        const r = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const shot = (map, w, h) => new Promise(r => { map.once('render', () => { const k = Object.assign(document.createElement('canvas'), {width: w, height: h}).getContext('2d'); k.drawImage(map.getCanvas(), 0, 0, w, h); r(k.getImageData(0, 0, w, h).data); }); map.triggerRepaint(); });
+            const c = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), g = c.getContext('2d');
+            g.fillStyle = 'rgb(128,0,0)'; g.fillRect(0, 0, 256, 256); // 0 m in the terrarium encoding
+            const blue = async terrain => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:400px;z-index:60'}));
+                const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: [c.toDataURL('image/png')], encoding: 'terrarium', tileSize: 256, maxzoom: 4},
+                    sq: {type: 'geojson', data: {type: 'Polygon', coordinates: [[[-6, -6], [6, -6], [6, 6], [-6, 6], [-6, -6]]]}}},
+                    ...(terrain ? {terrain: {source: 'dem'}} : {}), layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                        {id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f', 'fill-antialias': false, 'fill-translate': [0, 100], 'fill-translate-anchor': 'viewport'}}]};
+                const map = new mod.Map({container: el, style, center: [0, 8], zoom: 2.4, bearing: 45, pitch: 30, renderer, attributionControl: false, fadeDuration: 0});
+                try {
+                    await new Promise(r => map.once('idle', r));
+                    const d = await shot(map, 500, 400);
+                    let n = 0, sx = 0, sy = 0;
+                    for (let i = 0; i < d.length; i += 4) if (d[i + 2] > 200 && d[i] < 60 && d[i + 1] < 60) { n++; sx += (i / 4) % 500; sy += Math.floor(i / 4 / 500); }
+                    return {n, x: Math.round(sx / n), y: Math.round(sy / n)};
+                } finally { map.remove(); el.remove(); }
+            };
+            return {flat: await blue(false), terrain: await blue(true)};
+        }, mode);
+        check(`[${mode}] 3D terrain: fill-translate across a tile edge draws as without terrain, whole and in the same place (#2013)`,
+            r.flat.n > 1000 && Math.abs(r.terrain.n - r.flat.n) < r.flat.n * 0.03 && Math.hypot(r.terrain.x - r.flat.x, r.terrain.y - r.flat.y) < 2, JSON.stringify(r));
     }
     // #670: on a tilted map queryRenderedFeatures finds a circle where it is drawn: smaller far from the camera
     // (circle-pitch-scale: map), and an ellipse on the ground with circle-pitch-alignment: map. Both the array and the promise.

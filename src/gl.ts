@@ -1,4 +1,4 @@
-import {EXTENT, clamp, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
+import {EXTENT, clamp, latFromMerc, mercX, mercY, tileOrder, type TileID, type Transform} from './geo.ts';
 import {withFilter, mapTranslate, type CompiledLayer, type Light} from './style.ts';
 import {compileProp, type Prop} from './expr.ts';
 import type {Sky} from './resolve.ts';
@@ -227,6 +227,9 @@ void main() {
 uniform vec4 u_color; uniform vec4 u_clip; uniform vec4 u_dash; uniform float u_dashScale; uniform float u_blur; uniform mat3 u_screen;
 in float v_blur; in float v_gap; in float v_aa;
 uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex; uniform vec2 u_patSize;
+#ifdef STEPS
+uniform highp sampler2D u_stops;
+#endif
 uniform int u_cap;
 float outside(float t, float from, float to) { return max(max(from - t, t - to), 0.0); }
 // How far t is outside the part from..to of a period p, which repeats. A part of length 0 is far, unless keep.
@@ -264,8 +267,16 @@ void main() {
     return;
   }
   if (u_patSize.x < 0.0) {
-    // line-gradient: the color comes from a ramp, by the place along the whole line (see tessellateLine).
-    o = texture(u_img, vec2((v_color.r * 65280.0 + v_color.g * 255.0) / 65535.0, 0.5)) * a;
+    // line-gradient: the color comes from a ramp, by the place along the whole line (see tessellateLine). A step
+    // gradient (the program \`lineStep\`) takes the color of the last of its stops at or below that place (see \`steps\`).
+    float t = dot(v_color.rgb, vec3(16711680.0, 65280.0, 255.0)) / 16777215.0;
+#ifdef STEPS
+    int l = 0, r = textureSize(u_stops, 0).x;
+    while (r - l > 1) { int m = (l + r) / 2; if (t < texelFetch(u_stops, ivec2(m, 0), 0).r) r = m; else l = m; }
+    o = texelFetch(u_img, ivec2(l, 0), 0) * a;
+#else
+    o = texture(u_img, vec2(t, 0.5)) * a;
+#endif
     return;
   }
   o = vec4(c.rgb * a, a);
@@ -515,7 +526,7 @@ void main() {
  * the atmosphere of the globe, which the renderer adds from the part of the globe (see `render`), or one of the
  * layer types that the part `layers` adds (see layers-more.ts).
  */
-type ProgramName = keyof typeof BUILTIN | 'terrain' | 'halo' | 'heat' | 'heatColor' | 'hillshade' | 'color-relief';
+type ProgramName = keyof typeof BUILTIN | 'lineStep' | 'terrain' | 'halo' | 'heat' | 'heatColor' | 'hillshade' | 'color-relief';
 /**
  * The second order of a frame on the globe (see `groundFrame` in placement.ts) at the point (u, v) of a symbol: for
  * x on the screen with k = 0, for y with k = 1. Without it (Mercator, a frame of four numbers, no frame) it is 0.
@@ -523,6 +534,10 @@ type ProgramName = keyof typeof BUILTIN | 'terrain' | 'halo' | 'heat' | 'heatCol
 const second = (q: number[] | undefined, k: number, u: number, v: number) => q && q.length > 4 ? q[4 + k] * u * u + q[6 + k] * u * v + q[8 + k] * v * v : 0;
 /** The shaders of each program. The part for elevation data adds the program `terrain` when it loads (#1849), the globe adds `halo`, and the part `layers` adds the programs of its layer types (#2215). */
 export const SHADERS: Partial<Record<ProgramName, string[]>> & typeof BUILTIN = BUILTIN;
+// A line with a `step` gradient has a program of its own, which is linked at its first use and not with the others:
+// SwiftShader (WebGL without a GPU) spends the time of the search of the stops on each pixel of every line, even where
+// a branch skips it. In the line program that made a quad of 1000 x 700 pixels 35% slower to draw (#1808).
+SHADERS.lineStep = [SHADERS.line[0], '#define STEPS\n' + SHADERS.line[1]];
 
 /** `u` is empty until the program is first used: see `link`. */
 /** The matrix of a tile moved by (tx, ty) pixels along the axes of the map (`*-translate`; see `mapTranslate`). */
@@ -535,7 +550,7 @@ const moveTile = (it: RenderItem<GLTile>, tx: number, ty: number) => {
 
 interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation>; shaders?: WebGLShader[]; /** The globe variant: the frame whose globe it has. */ frame?: number }
 /** The programs that have a globe variant (see `GLOBE_GLSL`). */
-const GLOBE_PROGRAMS = new Set(['fill', 'pattern', 'edge', 'line', 'circle', 'heat', 'raster', 'hillshade', 'color-relief', 'icon', 'extrusion', 'terrain']);
+const GLOBE_PROGRAMS = new Set(['fill', 'pattern', 'edge', 'line', 'lineStep', 'circle', 'heat', 'raster', 'hillshade', 'color-relief', 'icon', 'extrusion', 'terrain']);
 /** Floats for one corner of an icon: see `a_v` and `a_d` of the `icon` program. */
 const ICON_VERTEX = 7;
 interface IconBuffers {
@@ -553,7 +568,7 @@ interface IconBuffers {
 }
 interface GLBuffers {
     type: GLBatch['type']; vao: WebGLVertexArrayObject; count: number; /** UNSIGNED_SHORT or UNSIGNED_INT. */ indexType: number; color: boolean; scalar: boolean; /** A circle with a buffer of the stroke color (1) or of the stroke width and blur (2) for each feature. */ stroke?: number; bufs: WebGLBuffer[];
-    edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string; /** See `Batch.lift`. */ lift?: boolean;
+    edgeVao?: WebGLVertexArrayObject; edgeCount?: number; pat?: string; /** See `Batch.dash`. */ dash?: number[]; /** See `Batch.lift`. */ lift?: boolean;
     /** A heatmap on a globe below zoom 6: each point is a grid of corners in sevenths (see `tessellate`). */ grid?: boolean;
 }
 export interface GLTile {
@@ -585,6 +600,10 @@ export interface TerrainTile {
     signature: string;
     /** The direction of the light in the picture (a step of the map's bearing), for relief that is lit from the viewer's side. */
     light: number;
+    /** For each source with a layer that fill-translate or line-translate moves: this tile and its neighbors. */
+    around: Map<string, RenderItem<GLTile>[]>;
+    /** The zoom (and the bearing, with the anchor viewport) that the translation in the picture depends on; empty without one. */
+    shift: string;
     /** Whether everything the picture needs has loaded; a finished picture is not replaced by a partial one. */
     complete: boolean;
     /**
@@ -652,6 +671,8 @@ export class GLRenderer {
     private globePrograms: Partial<Record<ProgramName, Program>> = {};
     /** The globe of the frame that is being drawn, if any (see `Scene.globe`). */
     private globe?: Scene['globe'];
+    /** While the picture of a ground tile is drawn: its `around` (see TerrainTile). */
+    private around?: TerrainTile['around'];
     /** The part of the globe (globe.ts), once a frame has shown the globe: the renderer takes the code of its shaders from it. */
     private globeCode?: typeof import('./globe.ts');
     /** The grid that raster, hillshade and background tiles are drawn on with the globe, in tile units: see `globeGrid`. */
@@ -763,7 +784,7 @@ export class GLRenderer {
         // at once, so that the driver can compile them in parallel (KHR_parallel_shader_compile, where it exists).
         if (!this.programs.fill) {
             gl.getExtension('KHR_parallel_shader_compile');
-            for (const n in SHADERS) this.programs[n as ProgramName] = this.link(...SHADERS[n as ProgramName]! as [string, string]);
+            for (const n in SHADERS) if (n !== 'lineStep') this.programs[n as ProgramName] = this.link(...SHADERS[n as ProgramName]! as [string, string]);
         }
         let p = this.programs[name] ??= this.link(...SHADERS[name]! as [string, string]);
         if (this.globe && GLOBE_PROGRAMS.has(name)) p = this.globePrograms[name] ??= this.link(SHADERS[name]![0], SHADERS[name]![1], this.globeCode!.GLOBE_GLSL);
@@ -822,7 +843,7 @@ export class GLRenderer {
             let count = 0, scalar = false, edgeVao: WebGLVertexArrayObject | undefined;
             if (b.type === 'fill') {
                 vertices = b.pos.length / 2;
-                attr(0, b.pos, 2, gl.SHORT);
+                attr(0, b.pos, 2, b.pos instanceof Float32Array ? gl.FLOAT : gl.SHORT);
                 if (b.color) attr(1, b.color, 4, gl.UNSIGNED_BYTE, true);
                 index(b.idx);
                 count = b.idx.length;
@@ -833,7 +854,7 @@ export class GLRenderer {
                     gl.bindVertexArray(edgeVao);
                     gl.bindBuffer(gl.ARRAY_BUFFER, posBuf);
                     gl.enableVertexAttribArray(0);
-                    gl.vertexAttribPointer(0, 2, gl.SHORT, false, 0, 0);
+                    gl.vertexAttribPointer(0, 2, b.pos instanceof Float32Array ? gl.FLOAT : gl.SHORT, false, 0, 0);
                     if (b.color) { gl.bindBuffer(gl.ARRAY_BUFFER, colorBuf); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.UNSIGNED_BYTE, true, 0, 0); }
                     index(b.edges);
                     gl.bindVertexArray(vao);
@@ -872,7 +893,7 @@ export class GLRenderer {
                 index(b.idx);
                 count = b.idx.length;
             }
-            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat, grid: b.type === 'circle' && b.grid, lift: b.type === 'extrusion' && b.lift};
+            batches[id] = {type: b.type, vao, count, indexType, color: !!b.color, scalar, stroke: b.type === 'circle' ? (b.stroke ? 1 : 0) | (b.sb ? 2 : 0) : 0, bufs, edgeVao, edgeCount: b.type === 'fill' ? b.edges?.length : undefined, pat: b.pat, dash: b.dash, grid: b.type === 'circle' && b.grid, lift: b.type === 'extrusion' && b.lift};
         }
         let icons: Record<string, IconBuffers> | undefined;
         for (const id in t.icons) {
@@ -970,7 +991,7 @@ export class GLRenderer {
             let u: Record<string, WebGLUniformLocation> | undefined;
             // icon-translate moves the point by tile units before it is projected, as in MapLibre GL JS (#2021).
             const move = mapTranslate(L.p.iconTranslate.eval(zoom), L.p.iconTranslateAnchor.eval(zoom), tr.bearing);
-            for (const it of s.items.get(L.source!) ?? []) {
+            for (const it of [...s.items.get(L.source!) ?? []].sort(tileOrder)) { // (the order of the tiles of the placed icons)
                 const b = it.tile.icons?.[L.id];
                 if (!b || !(b.counts[0] + b.counts[1])) continue;
                 const p = L.p;
@@ -1262,7 +1283,7 @@ export class GLRenderer {
                 gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
                 continue;
             }
-            const items = bySource.get(L.source!);
+            let items = bySource.get(L.source!);
             if (!items) continue;
             if (L.type === 'raster' || L.type === 'hillshade' || L.type === 'color-relief') {
                 if (L.type !== 'raster' && !s.layerCode) continue;
@@ -1315,16 +1336,24 @@ export class GLRenderer {
             }
             // fill-translate, line-translate and fill-extrusion-translate move the layer by screen pixels. The anchor
             // says if the direction turns with the map (the default) or stays fixed on the screen.
-            const [tx, ty] = L.type === 'fill' || L.type === 'line' || L.type === 'fill-extrusion' ? mapTranslate(L.p.translate.eval(zoom), L.p.translateAnchor.eval(zoom), tr.bearing) : [0, 0];
+            let [tx, ty] = L.type === 'fill' || L.type === 'line' || L.type === 'fill-extrusion' ? mapTranslate(L.p.translate.eval(zoom), L.p.translateAnchor.eval(zoom), pass === 'ground' ? s.tr.bearing : tr.bearing) : [0, 0];
+            // In the picture of a ground tile (3D terrain), the translation is in pixels of the map, not of the picture,
+            // and the neighbor tiles are drawn too: each tile keeps the part that is its own before the move, so that the
+            // moved parts meet at the edges (#2013). The picture has no bearing, so the bearing of the map turns the anchor viewport.
+            const translated = pass === 'ground' && (tx || ty) ? this.around?.get(L.source!) : undefined;
+            if (translated) { const k = 2 ** (zoom - s.tr.zoom); tx *= k; ty *= k; items = translated; }
             const moved = (it: RenderItem<GLTile>) => moveTile(it, tx, ty);
             // On the globe the shaders take the point on the sphere from the tile position, so the tile is moved there
             // too, by the same tile units (MapLibre GL JS adds the translation to the position before projectTile).
             const shift = (it: RenderItem<GLTile>) => tx || ty ? [tx / it.scale, ty / it.scale] : undefined;
             // The part of the screen that is the tile's, in the units of the layer's first tile (see FS_CLIP_SCREEN).
             let screen: Float32Array | number[] | undefined;
+            // On the globe a tile of the first or the last row also owns the cap of its pole, as the tile mask of MapLibre GL
+            // JS does (`extendToNorthPole`): a line that is clamped to 85.05° keeps the half of its width past the edge (#2307).
             const clipTo = (u: Record<string, WebGLUniformLocation>, it: RenderItem<GLTile>) => {
-                gl.uniformMatrix3fv(u.u_screen, false, screen ??= this.globe ? NO_SCREEN : screenToTile(items[0].matrix4, target));
-                gl.uniform4fv(u.u_clip, this.globe ? it.clip : clipIn(items[0].id, it.id, it.clip));
+                gl.uniformMatrix3fv(u.u_screen, false, screen ??= this.globe ? NO_SCREEN : screenToTile(items![0].matrix4, target));
+                const [x0, y0, x1, y1] = it.clip, {y, z} = it.id, sx = translated ? tx / items![0].scale : 0, sy = translated ? ty / items![0].scale : 0;
+                gl.uniform4fv(u.u_clip, this.globe ? [x0, y || y0 ? y0 : -1e6, x1, y < 2 ** z - 1 || y1 < EXTENT ? y1 : 1e6] : clipIn(items![0].id, it.id, it.clip).map((v, i) => v + (i % 2 ? sy : sx)));
             };
             const patterned = L.type === 'fill' && !!(L.p.pattern.dd || L.p.pattern.eval(zoom));
             if (patterned) {
@@ -1363,7 +1392,7 @@ export class GLRenderer {
                 gl.enable(gl.CULL_FACE); gl.cullFace(gl.FRONT);
             }
             draw: for (const it of patterned ? [] : items) for (const b of parts(it, L.id)) {
-                const u = use(b.type), m = moved(it), sh = shift(it);
+                const u = use(L.steps && b.type === 'line' ? 'lineStep' : b.type), m = moved(it), sh = shift(it);
                 if (extrude || b.type === 'circle' && s.terrain) this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                 if (first) {
                     first = false;
@@ -1402,6 +1431,7 @@ export class GLRenderer {
                         const name = L.p.pattern.dd ? '' : L.p.pattern.eval(zoom), img = name ? s.icon?.(name) : undefined;
                         gl.uniform2f(u.u_patSize, L.ramp ? -1 : img ? img.width / img.pixelRatio : 0, img ? img.height / img.pixelRatio : 1);
                         if (L.ramp) {
+                            if (L.steps) { gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.rampTexture(L.steps)); gl.uniform1i(u.u_stops, 3); }
                             gl.activeTexture(gl.TEXTURE0);
                             gl.bindTexture(gl.TEXTURE_2D, this.rampTexture(L.ramp));
                             gl.uniform1i(u.u_img, 0);
@@ -1435,6 +1465,8 @@ export class GLRenderer {
                     bindImage(u, img);
                     if (b.type === 'line') gl.uniform2f(u.u_patSize, img.width / img.pixelRatio, img.height / img.pixelRatio);
                 }
+                // The dasharray of a batch of a line-dasharray with a value for each feature (#1807).
+                if (b.dash) gl.uniform4f(u.u_dash, b.dash[0] ?? 0, b.dash[1] ?? 0, b.dash[2] ?? 0, b.dash[3] ?? 0);
                 this.placeTile(u, it.id, m, sh);
                 if (b.type === 'fill' || b.type === 'line') clipTo(u, it); else gl.uniform4fv(u.u_clip, it.clip);
                 gl.bindVertexArray(b.vao);
@@ -1647,7 +1679,7 @@ export class GLRenderer {
     private dropRamps(layers: CompiledLayer[]) {
         if (layers === this.rampLayers) return;
         this.rampLayers = layers;
-        const keep = new Set(layers.flatMap(L => [L.ramp, L.relief]));
+        const keep = new Set(layers.flatMap(L => [L.ramp, L.relief, L.steps]));
         for (const [pixels, tex] of this.ramps) if (!keep.has(pixels)) { this.gl.deleteTexture(tex); this.ramps.delete(pixels); }
     }
     private declare floatTargets?: boolean;
@@ -1666,7 +1698,7 @@ export class GLRenderer {
         gl.uniform4fv(u.u_unpack, dem.unpack);
     }
 
-    private drapes = new Map<string, {tex: WebGLTexture; size: number; signature: string; used: number; /** When the picture was last made. */ at?: number; light?: number; /** Made at half the size while the camera moved. */ rough?: boolean}>();
+    private drapes = new Map<string, {tex: WebGLTexture; size: number; signature: string; used: number; /** When the picture was last made. */ at?: number; light?: number; shift?: string; /** Made at half the size while the camera moved. */ rough?: boolean}>();
     private frame = 0;
     private grid?: {vao: WebGLVertexArrayObject; count: number; /** For each skirt vertex, the grid vertex it hangs from. */ skirt: number[]};
     private meshHeights = new Map<string, {buffer: WebGLBuffer; version: number; used: number}>();

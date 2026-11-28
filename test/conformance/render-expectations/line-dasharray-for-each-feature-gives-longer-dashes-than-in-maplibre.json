@@ -1,7 +1,0 @@
-{
-  "label": "line-dasharray for each feature gives longer dashes than in MapLibre",
-  "decision": "later",
-  "issue": 1807,
-  "reason": "line-dasharray for each feature gives longer dashes than in MapLibre.",
-  "pattern": "^(line-dasharray/property-function/cap-default)$"
-}

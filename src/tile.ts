@@ -12,9 +12,9 @@ import {VARIANT, variantName} from './markers.ts';
  * The SVG backend turns this straight into paths; `tessellate` turns it into GPU buffers.
  */
 export interface Geom {
-    /** In tile units, or in halves of a tile unit when `half` is set (lines, see `tessellateLine`). */
+    /** In tile units, or in halves of a tile unit when `half` is set (lines and buildings, see `tessellateLine` and `tessellateExtrusion`). */
     coords: Int16Array | Float32Array;
-    /** The coordinates are halves of a tile unit (the batches of lines), clamped to int16. */
+    /** The coordinates are halves of a tile unit (the batches of lines and of buildings), clamped to int16. */
     half?: boolean;
     /** Cumulative point count at the end of each ring. */
     ringEnds: Uint32Array;
@@ -57,6 +57,8 @@ export interface Batch {
     most?: number[];
     /** Lines with a gradient: for each feature, how far along the whole line it starts and ends (0 to 1). */
     progress?: Float32Array;
+    /** Lines: 1 for each feature that is a polygon, whose rings are closed (see `tessellateLine`); present when one is. */
+    closed?: Uint8Array;
     cap?: string;
     join?: string;
     /** `line-miter-limit` and `line-round-limit`: the longest miter (in line widths) drawn as a miter or kept sharp instead of rounded. */
@@ -77,6 +79,8 @@ export interface Batch {
     ed?: boolean;
     /** A pattern with a value for each feature: the image of the features of this batch (see `patternKey`). */
     pat?: string;
+    /** A `line-dasharray` with a value for each feature: the dasharray of the features of this batch (see `patternKey`; empty for a solid line). */
+    dash?: number[];
     /** The points of a heatmap layer. */
     heat?: boolean;
 }
@@ -151,8 +155,8 @@ export interface IconBatch {
 /** `z`: the zoom that the sizes of the tile were found at, when it is not the zoom of the tile (see `buildTile`). */
 export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; /** When the fetched tile is out of date, and its `ETag` (see `TileFetchState`). */ expires?: number; etag?: string }
 
-export type GLBatch = {/** See `Batch.pat`. */ pat?: string} & (
-    | {type: 'fill'; pos: Int16Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
+export type GLBatch = {/** See `Batch.pat` and `Batch.dash`. */ pat?: string; dash?: number[]} & (
+    | {type: 'fill'; /** Whole tile units, or floats where a GeoJSON polygon has halves of a unit. */ pos: Int16Array | Float32Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array; /** See `Batch.lift`. */ lift?: boolean; /** The centroid of each vertex's polygon, in tile units: on 3D terrain the ground under it lifts the polygon. */ c: Int16Array}
     | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** See `Batch.feat`, for each vertex. */ feat?: Float32Array; featMask?: number; /** See `Batch.most`. */ most?: number[]}
     | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array; /** Each point is a grid of 4 × 4 corners, in sevenths (see `tessellate`). */ grid?: boolean; /** See `Batch.stroke`, `Batch.sb`, `Batch.feat` and `Batch.stroke1`, for each vertex. */ stroke?: Uint8Array; sb?: Float32Array; feat?: Float32Array; featMask?: number; stroke1?: Uint8Array});
@@ -340,20 +344,24 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
         }
         // fill-pattern, line-pattern and fill-extrusion-pattern with a value for each feature: the features of each image
         // are a batch of their own, drawn with that image (a feature with no image is not drawn, as in MapLibre GL JS).
+        // A line-dasharray with a value for each feature (and no such pattern, which replaces the dashes) makes a batch for
+        // each dasharray in the same way, found at the zoom of the tile (#1807).
         // With a sort key, each run of features with the same image is a batch, so that the batches keep the order of the key.
         // Each batch is a draw call in each frame, so above MAX_RUNS runs in a tile the features of each image are one batch
         // again, and the key orders them only within the image (#1445).
         let groups: [string, typeof features][] = [];
         const byName = new Map<string, typeof features>();
-        if ((L.type === 'fill' || L.type === 'line' || extrude) && p.pattern.dd) {
+        const byPattern = (L.type === 'fill' || L.type === 'line' || extrude) && p.pattern.dd, byDash = !byPattern && L.type === 'line' && p.dash.dd;
+        if (byPattern || byDash) {
             for (const f of features) {
                 ctx.f = f;
-                const name = String(p.pattern.eval(zs, f) ?? ''), last = groups[groups.length - 1];
+                const name = byDash ? JSON.stringify(p.dash.eval(zs, f) ?? []) : String(p.pattern.eval(zs, f) ?? ''), last = groups[groups.length - 1];
                 if (!name) continue;
                 byName.get(name)?.push(f) ?? byName.set(name, [f]);
                 if (sortKey) last?.[0] === name ? last[1].push(f) : groups.push([name, [f]]);
             }
-            if (groups.length > MAX_RUNS) warnOnce(`E2040 layer "${L.id}": in the order of "${L.type}-sort-key", the features of a tile form more than ${MAX_RUNS} runs with the same "${L.type}-pattern", so the key orders the features only within each image. Give the features of one image keys next to each other, or make a layer for each image.`);
+            const grouped = byDash ? 'line-dasharray' : L.type + '-pattern';
+            if (groups.length > MAX_RUNS) warnOnce(`E2040 layer "${L.id}": in the order of "${L.type}-sort-key", the features of a tile form more than ${MAX_RUNS} runs with the same "${grouped}", so the key orders the features only within each value. Give the features of one value keys next to each other, or make a layer for each value.`);
             if (!sortKey || groups.length > MAX_RUNS) groups = [...byName];
         } else groups.push(['', features]);
         let k = 0;
@@ -373,7 +381,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             const stroke1: number[] | null = ddStroke && (moves(p.strokeColor) || moves(p.strokeOpacity)) ? [] : null;
             let grows = false;
             const most = [0, 0, 0];
-            const progress: number[] | null = line && L.ramp ? [] : null;
+            const progress: number[] | null = line && L.ramp ? [] : null, closed: number[] = [];
             const scalarProp = line ? p.width : heat ? p.weight : L.type === 'circle' ? p.radius : null;
             for (const f of fs) {
                 // Circle and heatmap layers take any geometry: every vertex of a line or polygon is a point.
@@ -398,6 +406,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                     start = end;
                 }
                 featEnds.push(ringEnds.length);
+                if (line) closed.push(f.type === 3 ? 1 : 0);
                 if (ddColor) pushColor(color, p.color.dd ? p.color.eval(zs, f) : WHITE, p.opacity.dd ? p.opacity.eval(zs, f) : 1);
                 if (scalarProp?.dd) {
                     const now = scalarProp.eval(zs, f), then = scalarProp.eval(z1, f);
@@ -423,12 +432,15 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 if (extrude) heights.push(lift ? 1 : Math.max(0, p.height.eval(zs, f))), bases.push(lift ? 0 : Math.max(0, p.base.eval(zs, f)));
             }
             if (!featEnds.length) continue;
+            // (A fill keeps halves only where a polygon has them, which is a GeoJSON source: the points of a vector tile are whole.)
+            const half = kind === 'line' || extrude || kind === 'fill' && coords.some(t => t % 1);
             const batch: Batch = {
                 type: kind as Batch['type'],
-                geom: {coords: kind === 'line' ? halves(coords) : Int16Array.from(coords), ringEnds: Uint32Array.from(ringEnds), featEnds: Uint32Array.from(featEnds), half: kind === 'line' || undefined},
+                geom: {coords: half ? halves(coords) : Int16Array.from(coords, Math.round), ringEnds: Uint32Array.from(ringEnds), featEnds: Uint32Array.from(featEnds), half: half || undefined},
             };
             if (ddColor && !progress) batch.color = Uint8Array.from(color);
             if (progress) batch.progress = Float32Array.from(progress);
+            if (closed.includes(1)) batch.closed = Uint8Array.from(closed);
             if (scalarProp?.dd) batch[line ? 'width' : 'radius'] = Float32Array.from(scalar);
             if (scalarProp?.dd && grows) batch[line ? 'width1' : 'radius1'] = Float32Array.from(scalar1);
             if (line && (scalarProp!.dd || p.gap.dd || p.offset.dd)) batch.most = most;
@@ -440,7 +452,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (extrude) { batch.height = Float32Array.from(heights); batch.base = Float32Array.from(bases); batch.lift = lift || undefined; if (pat || p.pattern.zoom || p.pattern.eval(zs)) batch.ed = true; }
             if (line) { batch.cap = p.cap.eval(zs); batch.join = p.join.eval(zs); batch.miterLimit = p.miterLimit.eval(zs); batch.roundLimit = p.roundLimit.eval(zs); batch.sharp = ov > 16 ? 0 : 15 * EXTENT / 512 / ov; }
             if (L.type === 'fill') { batch.outline = p.outline.eval(zs)[3] > 0; batch.antialias = p.antialias.eval(zs) !== false; }
-            if (pat) batch.pat = pat;
+            if (byDash) batch.dash = JSON.parse(pat); else if (pat) batch.pat = pat;
             if (heat) batch.heat = true;
             out.layers[patternKey(L.id, k++)] = batch;
         }
@@ -606,7 +618,7 @@ export function tessellate(b: Batch, globe?: GlobeCut): GLBatch | null {
     const idx: number[] = [];
     if (b.type === 'fill') {
         if (b.height) return tessellateExtrusion(b, globe);
-        const color = b.color ? new Uint8Array(coords.length * 2) : undefined;
+        const color = b.color ? new Uint8Array(coords.length * 2) : undefined, pos = b.geom.half ? Float32Array.from(coords, t => t / 2) : coords as Int16Array;
         for (let f = 0; f < featEnds.length; f++) {
             eachPolygon(b.geom, f, (p0, p1, holes) => {
                 const tris = earcut(coords.subarray(p0 * 2, p1 * 2) as any, holes);
@@ -621,14 +633,14 @@ export function tessellate(b: Batch, globe?: GlobeCut): GLBatch | null {
         // have it, and the clip of the fragment shader gives each of its pixels to one tile (#2464).
         let edges: Uint32Array | undefined;
         if (b.antialias !== false || b.outline) {
-            const list: number[] = [], out = (i: number, j: number, k: number) => (coords[i * 2 + k] < 0 && coords[j * 2 + k] < 0) || (coords[i * 2 + k] > EXTENT && coords[j * 2 + k] > EXTENT);
+            const list: number[] = [], out = (i: number, j: number, k: number) => (pos[i * 2 + k] < 0 && pos[j * 2 + k] < 0) || (pos[i * 2 + k] > EXTENT && pos[j * 2 + k] > EXTENT);
             for (let r = 0; r < ringEnds.length; r++) {
                 const s = r ? ringEnds[r - 1] : 0, e = ringEnds[r];
                 for (let i = s, j = e - 1; i < e; j = i++) if (!out(i, j, 0) && !out(i, j, 1)) list.push(j, i);
             }
             edges = Uint32Array.from(list);
         }
-        return {type: 'fill', pos: coords as Int16Array, idx: Uint32Array.from(idx), color, edges};
+        return {type: 'fill', pos, idx: Uint32Array.from(idx), color, edges};
     }
 
     return tessellateLine(b);
@@ -662,7 +674,8 @@ function cutRings(g: Geom, {grid, cutLine}: GlobeCut, closed: boolean): Geom {
  * points of the grid added (they keep the edges of the polygon, not those of the cut).
  */
 function tessellateGlobeFill(b: Batch, globe: GlobeCut): GLBatch | null {
-    const g = b.geom, features: {coords: Int16Array; holes: number[]}[][] = [];
+    // (The cut works in whole units: halves are rounded here.)
+    const g = b.geom.half ? {...b.geom, coords: Int16Array.from(b.geom.coords, t => Math.round(t / 2)), half: undefined} : b.geom, features: {coords: Int16Array; holes: number[]}[][] = [];
     for (let f = 0; f < g.featEnds.length; f++) {
         const polygons: {coords: Int16Array; holes: number[]}[] = [];
         eachPolygon(g, f, (p0, p1, holes) => polygons.push({coords: (g.coords as Int16Array).subarray(p0 * 2, p1 * 2), holes}));
@@ -747,7 +760,11 @@ const outside = (c: ArrayLike<number>, s: number, e: number) => {
  * edge crosses a line of the grid, as MapLibre GL JS does, so that both follow the sphere.
  */
 function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
-    const {featEnds} = b.geom, v: number[] = [], idx: number[] = [], feats: number[] = [], ed: number[] = [], cen: number[] = [];
+    // (The geometry is in halves of a tile unit, as exact as in MapLibre GL JS, whose GeoJSON tiles are 8192 units wide:
+    // a rounding to whole units moves an edge by up to 1/16 of a pixel and can leave a row of pixels out (#1803). The
+    // vertices are floats, so they keep the halves.)
+    const geom = b.geom.half ? {...b.geom, coords: Float32Array.from(b.geom.coords, t => t / 2)} : b.geom;
+    const {featEnds} = geom, v: number[] = [], idx: number[] = [], feats: number[] = [], ed: number[] = [], cen: number[] = [];
     let count = 0;
     for (let f = 0; f < featEnds.length; f++) {
         const top = b.height![f], bottom = Math.min(b.base ? b.base[f] : 0, top);
@@ -757,8 +774,8 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
             feats.push(f);
             return count++;
         };
-        eachPolygon(b.geom, f, (p0, p1, holes) => {
-            let coords: ArrayLike<number> = b.geom.coords.subarray(p0 * 2, p1 * 2), bounds = [0, ...holes, p1 - p0];
+        eachPolygon(geom, f, (p0, p1, holes) => {
+            let coords: ArrayLike<number> = geom.coords.subarray(p0 * 2, p1 * 2), bounds = [0, ...holes, p1 - p0];
             if (outside(coords, 0, bounds[1])) return;
             // On 3D terrain, MapLibre GL JS lifts each polygon by the ground at its centroid (the mean of its points,
             // without the closing point of a ring), so the roof stays flat and every part of a MultiPolygon has its own.
@@ -866,9 +883,10 @@ function tessellateLine(b: Batch): GLBatch | null {
     let count = 0, f = 0, ringLength = 1;
     const vert = (x: number, y: number, nx: number, ny: number, side: number, dist: number) => {
         if (b.progress) {
-            // The place along the whole line goes in the color's red and green bytes, as one 16-bit number.
-            const from = b.progress[f * 2], part = Math.min(1, Math.max(0, from + (b.progress[f * 2 + 1] - from) * dist / ringLength)), t = Math.round(part * 65535);
-            color.push(t >> 8, t & 255, 0, 255);
+            // The place along the whole line goes in the color's red, green and blue bytes, as one 24-bit number, so that
+            // the steps of a `step` gradient a millionth of the line apart stay apart (#1808).
+            const from = b.progress[f * 2], part = Math.min(1, Math.max(0, from + (b.progress[f * 2 + 1] - from) * dist / ringLength)), t = Math.round(part * 16777215);
+            color.push(t >> 16, t >> 8 & 255, t & 255, 255);
             // The dashes of a line with a gradient: MapLibre measures such a line as 16383 tile units from end to
             // end, whatever its length. The same is done here, so that the dashes are those of MapLibre.
             dist = part * 16383.5;
@@ -903,10 +921,11 @@ function tessellateLine(b: Batch): GLBatch | null {
                 const x = coords[i * 2] * k, y = coords[i * 2 + 1] * k, n = xs.length;
                 if (!n || x !== xs[n - 1] || y !== ys[n - 1]) { xs.push(x); ys.push(y); }
             }
-            const n = xs.length;
-            if (n < 2) continue;
+            const n = xs.length, closed = b.closed?.[f];
+            if (n < (closed ? 3 : 2)) continue;
             if (b.progress) { ringLength = 0; for (let i = 0; i < n - 1; i++) ringLength += Math.hypot(xs[i + 1] - xs[i], ys[i + 1] - ys[i]) / 2; }
-            let last = -1, dist = 0, pdx = 0, pdy = 0, plen = 0, mid1 = -1, mid2 = -1;
+            // As in MapLibre GL JS, the dashes of a polygon ring start with the length of its closing segment counted.
+            let last = -1, dist = closed ? Math.hypot(xs[n - 1] - xs[n - 2], ys[n - 1] - ys[n - 2]) / 2 : 0, pdx = 0, pdy = 0, plen = 0, mid1 = -1, mid2 = -1;
             /**
              * The two triangles from the pair `last` to the pair `a`. The middle vertex of a round cap lies on the edge
              * between the two vertices of the pair at the end of the line (`mid1` on that of `last`, `mid2` on that of
@@ -1030,6 +1049,7 @@ export function toGL(ir: TileIR, globe?: GlobeCut): {tile: TileGL; transfer: Arr
         const g = tessellate(b, globe);
         if (!g) continue;
         if (b.pat) g.pat = b.pat;
+        if (b.dash) g.dash = b.dash;
         // (The batches of the images of a layer are numbered again without gaps: one that has no triangles is left out.)
         const base = id.split('\0')[0], k = next[base] ?? 0;
         next[base] = k + 1;
