@@ -27,7 +27,11 @@ to protect those qualities.
 ## Issues
 
 - **An issue has one fault or one decision,** so that one pull request closes it. Two faults that were found
-  together are two issues, unless one fix of a line or two covers both.
+  together are two issues, unless one fix of a line or two covers both, or both are symptoms of one root cause.
+- **A cluster issue has one root cause and lists its symptoms.** Its **Fault** is the shared cause, and a field
+  **Symptoms** after **From** lists the issues that the cause produces, one link each. A new P3 symptom of a cause
+  that has a cluster issue is one line of that list (a title and `file:line`) and gets no issue of its own. A symptom
+  of P0 to P2 gets its own issue and a line in the list.
 - **Search before you file** (`gh issue list --search`). A fault that has an issue gets no second one.
 - **The title names the thing and the fault in about 80 characters.** It does not list, and it does not say who
   found it.
@@ -82,6 +86,10 @@ to protect those qualities.
 - **A pull request has one concern.** A fix and its test belong together. An unrelated cleanup goes into its own
   pull request. One exception: up to four small fixes of tests or of the agent tools (no change of `src/`, one commit
   each) can share a pull request, whose body says `Fixes #N` for each, because each pull request runs all of CI.
+- **The fix of a root cause closes its cluster issue and each symptom that it resolves.** The pull request has a test
+  for each symptom that it closes, and its body says `Fixes #N` for the cluster issue and for each of those symptom
+  issues. When the fix leaves a symptom, the cluster issue stays open with that line, or the symptom moves to an
+  issue of its own cause.
 - After a merge, the `Browsers` workflow measures and tests in Chromium, Firefox and WebKit on three systems. Read
   its results (`git fetch origin bench-results && git show origin/bench-results:README.md`) before you ask the
   owner to test on a device. Started by hand, it also runs Safari on a macOS runner: start that run when a change
@@ -94,7 +102,8 @@ One session can act as the coordinator and give issues to workers (subagents). T
 worker, so it has only the rules. A worker reads `docs/agents/worker-brief.md`, and a coordinator reads
 `docs/agents/coordinating.md` before it starts a batch.
 
-- **A worker gets one issue and one branch,** or a bundle of small fixes of tests or tools (see above).
+- **A worker gets one issue and one branch,** or a cluster issue with its symptoms, or a bundle of small fixes of
+  tests or tools (see above).
 - **A worker opens the pull request and stops.** It reports in at most 12 lines in the format of the brief, and it
   files nothing and merges nothing. The coordinator watches CI, merges, sends a failure back to the same worker, and
   turns the faults that a report names into issues.
