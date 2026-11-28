@@ -871,12 +871,7 @@ export class Map {
             // (A rotate drag that pauses with the button down has not ended: MapLibre GL JS ends it once, at the release, #1873.)
             // (On the worker renderer the reports of a rotate drag can come after its release: the drag ends at the report
             // of its last turn, with one `moveend`, #2163.)
-            if (this.easedDuringDrag && this.moving && !e.moving && (e.seq ?? this.beganAt) >= this.beganAt) {
-                this.easedDuringDrag = false;
-                this.settle();
-                // (The drag is not over: its release fires `dragend` and the `moveend` of the drag.)
-                this.moving = this.dragging;
-            }
+            if (this.easedDuringDrag && this.moving && !e.moving && (e.seq ?? this.beganAt) >= this.beganAt) this.endEase();
             if (this.moving && !e.moving && (e.seq ?? this.beganAt) >= this.beganAt && !this.dragging && !this.awaitingInertia && !this.dragRotate.active && !this.turnPending()) this.settle();
         } else if (e.type === 'resource') {
             this.answer(e.url, e.kind).then(a => a, (err): RequestAnswer => ({error: String(err.message)})).then(a => this.post({type: 'resourceResult', id: e.id, ...a}, a.data ? [a.data] : undefined));
@@ -1265,7 +1260,26 @@ export class Map {
      * for the ease, and the end of the ease fires `moveend` while the pointer is still down. The release then fires
      * `dragend` and a second `moveend` (#2469).
      */
-    protected beginDuringDrag() { if (!this.dragging || !this.moving) return; this.beganAt = this.seq; this.easedDuringDrag = true; this.fire('movestart'); }
+    protected beginDuringDrag() {
+        if (!this.dragging || !this.moving) return;
+        // (A second ease ends the first one with its end events, as in MapLibre GL JS, #2529.)
+        this.endEase();
+        // The ease has its own zoom, rotate and pitch, and the gesture keeps its own until the release (#2530).
+        this.gestureAxes = [this.zooming, this.rotating, this.pitching];
+        this.zooming = this.rotating = this.pitching = false;
+        this.beganAt = this.seq; this.easedDuringDrag = true; this.fire('movestart');
+    }
+    /** @internal Ends an ease that runs during a gesture, with its end events: the gesture goes on (#2591). */
+    protected endEase() {
+        if (!this.easedDuringDrag) return;
+        const g = this.gestureAxes;
+        this.settle();
+        // (The drag is not over: its release fires `dragend` and the `moveend` of the drag.)
+        this.moving = this.dragging;
+        [this.zooming, this.rotating, this.pitching] = this.dragging ? g : [false, false, false];
+    }
+    /** The zoom, rotate and pitch of the gesture while an ease runs during it. */
+    private gestureAxes = [false, false, false];
     private easedDuringDrag = false;
     /** The command that began the movement: a report of the engine from before it does not end the movement. */
     private beganAt = 0;
@@ -2245,6 +2259,36 @@ export class Map {
 
     // ---- input ----
     private dragging = false;
+    /** True from `dragstart` to `dragend`: a pinch whose center does not move has no drag events, as in MapLibre GL JS (#2530). */
+    private dragged = false;
+    /** @internal Set by the input: ends the gesture of the pointers that are down, as `stop()` of MapLibre GL JS does. */
+    protected dropGesture?: () => void;
+    /**
+     * @internal Ends the gesture that runs, as `stop()` of MapLibre GL JS does (#2529): an ease during it ends with its end
+     * events, `dragend` fires, and the pointers that stay down move nothing. The drag has no `moveend`, as there.
+     */
+    protected endGesture() {
+        if (!this.dragging) return;
+        this.endEase();
+        this.dragging = this.moving = this.zooming = this.rotating = this.pitching = false;
+        this.awaitingInertia = false;
+        this.dropGesture?.();
+        if (this.dragged) { this.dragged = false; this.fire('dragend'); }
+    }
+    /**
+     * Ends the movement of a gesture at its release: the end events of its zoom, rotate and pitch, then `moveend`. An
+     * ease that runs on keeps its own (#2530).
+     */
+    private released() {
+        const own = this.easedDuringDrag, [z, r, p] = own ? this.gestureAxes : [this.zooming, this.rotating, this.pitching];
+        this.gestureAxes = [false, false, false];
+        this.moving = false;
+        if (!own) this.zooming = this.rotating = this.pitching = false;
+        if (z) this.fire('zoomend');
+        if (r) this.fire('rotateend');
+        if (p) this.fire('pitchend');
+        this.fire('moveend');
+    }
     private awaitingInertia = false;
     private engineMoving = false;
     /** The `seq` of the last turn of a rotate drag, and of the last command whose camera the engine has reported. */
@@ -2312,7 +2356,7 @@ export class Map {
             if (!pan || this.removed) return;
             this.post(pan);
         };
-        let panFrame = 0, pendingPan: {x: number; y: number} | null = null, rotating = false, moved = 0, samples: {t: number; x: number; y: number; w?: number}[] = [], aim = {b: 0, p: 0}, pinch: {dist: number; angle: number} | null = null;
+        let panFrame = 0, pinchFrame = 0, pinchFrom: {x: number; y: number} | undefined, pinchMoved = new Set<number>(), pendingPan: {x: number; y: number} | null = null, rotating = false, moved = 0, samples: {t: number; x: number; y: number; w?: number}[] = [], aim = {b: 0, p: 0}, pinch: {dist: number; angle: number} | null = null;
         // Wheel events do not say what produced them. As MapLibre does, tell mouse wheels from trackpads by their
         // deltas and timing, because the two need different handling to feel right.
         let wheelKind: 'wheel' | 'trackpad' | null = null, lastWheel = 0, held = 0, heldTimer: ReturnType<typeof setTimeout> | undefined, wheelEnd: ReturnType<typeof setTimeout> | undefined;
@@ -2380,6 +2424,7 @@ export class Map {
             } else if (pointers.size === 2) {
                 const f = twoFingers();
                 tapDrag = null;
+                pinchFrom = undefined; pinchMoved.clear();
                 gesture = {mode: 'undecided', dist: f.dist, angle: f.angle, startAngle: f.angle, rotating: false, mid: f.mid, start: [{...f.a}, {...f.b}], t0: now, travel: 0};
             }
         });
@@ -2412,10 +2457,24 @@ export class Map {
                     const together = Math.sign(da) === Math.sign(db) && Math.abs(da) > 4 && Math.abs(db) > 4 && sideways < Math.abs(da) + Math.abs(db);
                     // (With `cooperativeGestures`, two fingers move the map and do not tilt it: MapLibre GL JS tilts with three there; #1687.)
                     g.mode = together && !this.gated && Math.abs(f.a.y - f.b.y) < 120 && Math.abs(f.dist - g.dist) < 12 ? 'pitch' : 'pinch';
-                    if (!this.dragging) this.fire('dragstart', {originalEvent: e});
                     this.dragging = true;
                 }
-                if (g.mode !== 'undecided') this.fire('drag', {originalEvent: e});
+                const drag = () => { if (!this.dragged) this.fire('dragstart', {originalEvent: e}); this.dragged = true; this.fire('drag', {originalEvent: e}); };
+                if (g.mode === 'pitch') drag();
+                // As in MapLibre GL JS, the drag events of a pinch fire in a frame where the center of the fingers has moved
+                // (#2530). The fingers of one touch move arrive one at a time, so a frame counts once both have moved.
+                else if (g.mode === 'pinch') {
+                    pinchFrom ??= g.mid;
+                    pinchMoved.add(e.pointerId);
+                    if (!pinchFrame) pinchFrame = requestAnimationFrame(() => {
+                        pinchFrame = 0;
+                        if (gesture !== g || this.removed || pinchMoved.size < 2) return;
+                        pinchMoved.clear();
+                        const {mid} = twoFingers(), from = pinchFrom!;
+                        pinchFrom = mid;
+                        if (mid.x !== from.x || mid.y !== from.y) drag();
+                    });
+                }
                 if (g.mode === 'pitch') { if (this.touchPitch.isEnabled()) { this.touchPitch.active = true; this.post({type: 'rotate', delta: 0, pitch: -(f.mid.y - g.mid.y) * 0.5}); } }
                 else if (g.mode === 'pinch' && this.touchZoomRotate.isEnabled()) {
                     // (As in MapLibre GL JS, whose touch pan runs together with the pinch.)
@@ -2443,7 +2502,7 @@ export class Map {
                     if (!this.moving) { this.moving = true; this.fire('movestart', {originalEvent: e}); }
                     this.fire('dragstart', {originalEvent: e});
                 }
-                this.dragging = this.dragPan.active = true;
+                this.dragging = this.dragged = this.dragPan.active = true;
                 // (With 3D terrain the page does not know the ground well enough, and the engine moves the camera alone.)
                 // On the globe, as in MapLibre GL JS (handler_manager), the moves of one frame are applied together, once,
                 // in the frame: one turn from the first pointer to the last differs from several small turns (#479). On a
@@ -2530,7 +2589,7 @@ export class Map {
             this.dragging = false;
             // (A move that the engine has not reported yet gets its `move` here, so that `drag` follows a `move`, #2157.)
             if (this.dragMove) { const ev = this.dragMove; this.dragMove = undefined; if (this.moving) this.fire('move'); this.fire('drag', {originalEvent: ev}); }
-            if (wasDragging) this.fire('dragend', {originalEvent: e});
+            if (this.dragged) { this.dragged = false; this.fire('dragend', {originalEvent: e}); }
             if (tapDrag) {
                 if (!tapDrag.zoomed) {
                     // (The zoom waits for the listeners of `dblclick`, which the compat entry calls later: see `mouseEvent`.)
@@ -2566,9 +2625,9 @@ export class Map {
                     if (pendingPan) list.push({t, ...pendingPan}), pendingPan = null;
                     const [a, b] = inertiaSpan(list, t);
                     if (a && b && (a.x !== b.x || a.y !== b.y)) this.post({type: 'fling', dx: b.x - a.x, dy: b.y - a.y, ms: t - a.t});
-                    else { this.awaitingInertia = false; if (this.moving) { this.moving = false; this.fire('moveend'); } }
+                    else { this.awaitingInertia = false; if (this.moving) this.released(); }
                 });
-            } else if (wasDragging && this.moving) { this.moving = false; this.fire('moveend'); }
+            } else if (wasDragging && this.moving) this.released();
             if (moved <= 3 && e.type === 'pointerup' && e.button === 0 && !suppressClick) {
                 const at = pos(e);
                 if (e.pointerType === 'touch') lastTap = {t: now, x: at.x, y: at.y};
@@ -2582,6 +2641,8 @@ export class Map {
         (this.holdTouch = () => { el.removeEventListener('touchmove', hold); if (this.gated) el.addEventListener('touchmove', hold, {passive: false}); })();
         this.inputCleanup.push(() => { el.removeEventListener('touchmove', hold); this.holdTouch = undefined; });
         listen('pointerup', up);
+        // (The pointers that stay down after `stop()` move nothing until they lift, as a gesture that a listener took.)
+        this.dropGesture = () => { inert = pointers.size > 0; gesture = tapDrag = movePan = pendingPan = null; rotating = false; samples = []; this.held = null; this.dragMove = undefined; cancelAnimationFrame(panFrame); panFrame = 0; rest(); };
         listen('pointercancel', up);
         listen('lostpointercapture', up);
         const blur = () => { for (const id of [...pointers.keys()]) up({pointerId: id, type: 'blur'} as PointerEvent); };
