@@ -1206,13 +1206,13 @@ export class Map {
         return this;
     }
     /**
-     * `offset` ([x, y] or {x, y}, CSS pixels) puts `center` at that distance from the center of the view, as in
+     * `aroundPoint` ([x, y], CSS pixels) keeps the place under that point where it is (the compat entry turns its option `around`, a position, into it). `offset` ([x, y] or {x, y}, CSS pixels) puts `center` at that distance from the center of the view, as in
      * MapLibre GL JS. `easing` maps the time (0 to 1) to the progress (0 to 1); it is sampled into a table of 65
      * values, because a function cannot be sent to the engine's worker.
      */
-    easeTo(o: CameraInput & {duration?: number; around?: [number, number]; offset?: PointLike; easing?: (t: number) => number}) {
+    easeTo(o: CameraInput & {duration?: number; aroundPoint?: [number, number]; offset?: PointLike; easing?: (t: number) => number}) {
         const fly = this.flight; this.flight = undefined;
-        const {zoom, bearing, pitch, around} = o;
+        const {zoom, bearing, pitch, aroundPoint: around} = o;
         let center = o.center;
         const padding = o.padding === undefined ? undefined : paddingOf(o.padding);
         if (o.offset) {
@@ -1243,11 +1243,21 @@ export class Map {
         const c: Command = {type: 'ease', duration, center: center && toLngLat(center), zoom, bearing, pitch, around, padding, easing, fly};
         this.post(c);
         this.eased = {c, at: performance.now()};
-        this.easeStarted();
+        this.easeStarted(c);
         return this;
     }
     /** @internal Called when `easeTo` has sent an animation (not a jump). The compat entry starts the movement here. */
-    protected easeStarted() {}
+    protected easeStarted(_c: Extract<Command, {type: 'ease'}>) {}
+    /**
+     * @internal Fires `zoomstart`, `rotatestart` and `pitchstart` in the call of an animation for the axes that it changes,
+     * after `movestart`, as MapLibre GL JS does (#2474). The reports of the engine then fire no second start.
+     */
+    protected startAxes(c: {zoom?: number; bearing?: number; pitch?: number; fly?: unknown}) {
+        const zoom = c.fly ? true : c.zoom !== undefined && c.zoom !== this.tr.zoom;
+        if (zoom && !this.zooming) { this.zooming = true; this.fire('zoomstart'); }
+        if (c.bearing !== undefined && c.bearing !== this.tr.bearing && !this.rotating) { this.rotating = true; this.fire('rotatestart'); }
+        if (c.pitch !== undefined && c.pitch !== this.tr.pitch && !this.pitching) { this.pitching = true; this.fire('pitchstart'); }
+    }
     /** @internal Starts a movement now, with `movestart`, instead of at the first report of the engine. */
     protected begin() { this.easedDuringDrag = false; this.beganAt = this.seq; if (!this.moving) { this.moving = true; this.fire('movestart'); } }
     /**
@@ -1267,7 +1277,9 @@ export class Map {
     flyTo(o: Parameters<Map['easeTo']>[0] & FlyOptions) {
         // (The options reach easeTo, also through the override of the compat entry, in this member.)
         this.flight = [o.curve ?? 1.42, o.speed ?? 1.2, o.screenSpeed ?? 0, o.minZoom ?? -99, o.maxDuration ?? 1e12, o.duration === undefined ? 1 : 0];
-        return this.easeTo({...o, duration: o.duration ?? 1});
+        // As in MapLibre GL JS, a flight has no `aroundPoint`: only the jump for reduced motion, which is an `easeTo`, keeps it.
+        const still = !(o as {essential?: boolean}).essential && matchMedia('(prefers-reduced-motion: reduce)').matches;
+        return this.easeTo({...o, aroundPoint: still ? o.aroundPoint : undefined, duration: o.duration ?? 1});
     }
     private flight?: number[];
     /** Stops the animation of the camera, where it is. */
@@ -2508,7 +2520,7 @@ export class Map {
             const now = performance.now();
             if (gesture) {
                 // Two fingers down and up again quickly, without moving: zoom out.
-                if (gesture.mode === 'undecided' && now - gesture.t0 < 300 && gesture.travel < 12 && this.touchZoomRotate.isEnabled()) this.easeTo({zoom: this.tr.zoom - 1, around: [gesture.mid.x, gesture.mid.y], duration: 300});
+                if (gesture.mode === 'undecided' && now - gesture.t0 < 300 && gesture.travel < 12 && this.touchZoomRotate.isEnabled()) this.easeTo({zoom: this.tr.zoom - 1, aroundPoint: [gesture.mid.x, gesture.mid.y], duration: 300});
                 gesture = null;
                 suppressClick = true; // the finger still down must not pan-fling or click when it lifts
                 samples = [];
@@ -2524,7 +2536,7 @@ export class Map {
                     // (The zoom waits for the listeners of `dblclick`, which the compat entry calls later: see `mouseEvent`.)
                     // (`doubleClickZoom.isActive()` is true until the next task, as in MapLibre GL JS.)
                     if (this.doubleClickZoom.isEnabled()) { this.doubleClickZoom.active = true; setTimeout(() => { this.doubleClickZoom.active = false; }); }
-                    const {x, y} = tapDrag, zoom = () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + 1, around: [x, y], duration: 300}); };
+                    const {x, y} = tapDrag, zoom = () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + 1, aroundPoint: [x, y], duration: 300}); };
                     if (e.type === 'blur') zoom(); else mouseEvent('dblclick', e, {}, zoom);
                 }
                 tapDrag = null;
@@ -2604,7 +2616,7 @@ export class Map {
             if (e.shiftKey) value /= 4;
             if (wheelKind && value) send(value);
         }, {passive: false});
-        listen('dblclick', e => { if (lastPointerType === 'touch') return; /* touch double-taps are handled above, uniformly across browsers */ const p = pos(e); mouseEvent('dblclick', e, {}, () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + (e.shiftKey ? -1 : 1), around: [p.x, p.y], duration: 300}); }); });
+        listen('dblclick', e => { if (lastPointerType === 'touch') return; /* touch double-taps are handled above, uniformly across browsers */ const p = pos(e); mouseEvent('dblclick', e, {}, () => { if (this.doubleClickZoom.isEnabled()) this.easeTo({zoom: this.tr.zoom + (e.shiftKey ? -1 : 1), aroundPoint: [p.x, p.y], duration: 300}); }); });
         listen('contextmenu', e => { e.preventDefault(); mouseEvent('contextmenu', e); });
         listen('pointerenter', e => { if (e.pointerType === 'mouse') mouseEvent('mouseover', e); });
         listen('pointerleave', e => { if (e.pointerType === 'mouse') mouseEvent('mouseout', e); });

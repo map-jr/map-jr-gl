@@ -5711,6 +5711,35 @@ for (const renderer of ['worker', 'main']) {
     } catch (e) { check(`[${renderer}] the change after a pause was checked`, false, String(e.message).split('\n')[0]); }
     finally { await page.close(); }
 }
+// The one more frame after a pause (#429) is not itself taken for a frame after a pause (#971). Where the frames of the
+// page come more than 100 ms apart (a slow device, or WebGL in software), each extra frame asked for the next one, and a
+// map at rest drew without end: its frames took the time of the page, and a paint transition reached `idle` late. The
+// page here gives a frame every 150 ms; a map at rest then draws no frame in ten frames of the page.
+{
+    const page = await browser.newPage({viewport: {width: 400, height: 300}});
+    try {
+        await page.goto(`${origin}/bench`);
+        const renders = await page.evaluate(async () => {
+            const ownFrame = window.requestAnimationFrame.bind(window);
+            window.requestAnimationFrame = cb => setTimeout(() => ownFrame(cb), 150);
+            const frames = n => new Promise(r => { const f = () => --n > 0 ? requestAnimationFrame(f) : r(); requestAnimationFrame(f); });
+            const lib = await import('/dist/map-jr-gl.js');
+            const style = {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#ff0000'}}]};
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:200px;height:150px'}));
+            const map = lib.createMap(el, {style, renderer: 'main', attribution: false});
+            await new Promise(r => { const off = map.state.subscribe(s => s.idle, v => { if (v) { off(); r(); } }); });
+            let n = 0;
+            map.listen('render', () => n++);
+            await frames(4);
+            n = 0;
+            await frames(10);
+            map.destroy();
+            return n;
+        });
+        check('a map at rest stops drawing when the frames of the page come more than 100 ms apart (#971)', renders <= 1, JSON.stringify({renders}));
+    } catch (e) { check('the frames of a map at rest with slow page frames were counted', false, String(e.message).split('\n')[0]); }
+    finally { await page.close(); }
+}
 // The style sheet goes into the root node of the container (#47): a map in a shadow root has styled controls, also when
 // its container is attached to the shadow root after the map is made. A page with `style-src 'nonce-x'` and the option
 // `nonce: 'x'` has styled controls, with a constructed style sheet and with a `<style>` element (no adoptedStyleSheets).

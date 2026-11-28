@@ -184,6 +184,48 @@ try {
     check('browser: with initialView.bounds, the dot is at the same place in the first view and in the map', !!drawn && Math.hypot(drawn[0] - live[0], drawn[1] - live[1]) <= 2 && !page.errors.length, JSON.stringify({drawn, live, errors: page.errors}));
     await page.close();
 
+    // With a pitch, the first view draws the view as the map does, so that nothing moves when the map takes over (#395): the pixels of a
+    // square on the ground and of a dot in a screenshot of the first view (without scripts) and of the map after its first frames.
+    const tiltData = {square: {type: 'Feature', properties: {}, geometry: {type: 'Polygon', coordinates: [[[-74.009, 40.707], [-74.004, 40.707], [-74.004, 40.71], [-74.009, 40.71], [-74.009, 40.707]]]}}, dot: point};
+    const tiltLayers = [{id: 'square', type: 'fill', source: 'square', paint: {'fill-color': '#ff0000'}}, ...dot];
+    pages['/tilt'] = await renderElement({style: origin + '/blank.json', initialView: {center: [-74.0065, 40.7085], zoom: 15, bearing: 30, pitch: 60}, layers: tiltLayers, data: tiltData, attribution: false},
+        {width: 600, height: 400, attributes: {style: 'width:600px;height:400px'}}) + `<script type="module">
+  const a = document.querySelector('map-jr');
+  a.addEventListener('map-idle', () => { window.idle = true; });
+  a.layers = ${JSON.stringify(tiltLayers)}; a.data = ${JSON.stringify(tiltData)};
+  await import('/dist/element.js');
+  window.ready = true;
+</script>`;
+    const masks = async page => {
+        const shot = (await page.screenshot({clip: {x: 0, y: 0, width: 600, height: 400}})).toString('base64');
+        return page.evaluate(async shot => {
+            const img = new Image();
+            img.src = 'data:image/png;base64,' + shot;
+            await img.decode();
+            const c = document.createElement('canvas');
+            c.width = img.width; c.height = img.height;
+            const g = c.getContext('2d');
+            g.drawImage(img, 0, 0);
+            const px = g.getImageData(0, 0, c.width, c.height).data, red = [], navy = [];
+            for (let i = 0; i < px.length; i += 4) {
+                if (px[i] > 200 && px[i + 1] < 60 && px[i + 2] < 60) red.push(i / 4);
+                if (Math.abs(px[i] - 0x12) < 20 && Math.abs(px[i + 1] - 0x34) < 20 && Math.abs(px[i + 2] - 0x56) < 20) navy.push(i / 4);
+            }
+            return {red, navy};
+        }, shot);
+    };
+    page = await open('/tilt', {javaScriptEnabled: false});
+    const firstTilt = await masks(page);
+    await page.close();
+    page = await open('/tilt');
+    await page.waitForFunction(() => window.idle && !document.querySelector('map-jr [data-map-jr-ssr]'), null, {timeout: 60000});
+    const liveTilt = await masks(page);
+    // The share of the pixels of either picture that both have (intersection over union). A square drawn from straight above has less than half.
+    const overlap = (a, b) => { const s = new Set(a), both = b.filter(i => s.has(i)).length; return +(both / (a.length + b.length - both || 1)).toFixed(3); };
+    const tiltOverlap = {square: overlap(firstTilt.red, liveTilt.red), dot: overlap(firstTilt.navy, liveTilt.navy), pixels: [firstTilt.red.length, liveTilt.red.length, firstTilt.navy.length, liveTilt.navy.length]};
+    check('browser: with initialView.pitch, the first view draws the square and the dot where the map draws them', tiltOverlap.square >= 0.9 && tiltOverlap.dot >= 0.8 && liveTilt.red.length > 1000 && !page.errors.length, JSON.stringify({...tiltOverlap, errors: page.errors}));
+    await page.close();
+
     // The first view of 200 by 200 in elements of another shape and size: drawn at 1:1 and centered, cropped by a smaller
     // element, and scaled up as little as covers a larger one, with no band of the page and no overflow (#1427).
     // With `bounds` the map fits them to the element, so the first view is scaled as the fit is: the bounds of 40 by 20 degrees

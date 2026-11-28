@@ -648,7 +648,7 @@ for (const mode of renderers) {
             const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             await new Promise(r => m.once('load', r));
             const log = [];
-            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || (t !== 'move' && t !== 'zoom')) log.push(t); });
             m.easeTo({center: [20, 50], duration: 2000});
             await new Promise(r => setTimeout(r, 500));
             log.push('|stop'); m.stop(); log.push('|stopret');
@@ -667,7 +667,7 @@ for (const mode of renderers) {
             const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             await new Promise(r => m.once('load', r));
             const log = [];
-            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || (t !== 'move' && t !== 'zoom')) log.push(t); });
             m.easeTo({center: [20, 50], duration: 2000});
             await new Promise(r => setTimeout(r, 500));
             log.push('|call2'); m[second]({center: [30, 55], duration: 1000}); log.push('|ret2');
@@ -681,7 +681,7 @@ for (const mode of renderers) {
                 ours === ml && ml.startsWith('|call2 moveend movestart |ret2'), JSON.stringify({ours, ml}));
         }
         // An easeTo or flyTo during a drag fires movestart inside the call, and the drag goes on: the ease fires moveend, and
-        // the release fires dragend and a second moveend, as in MapLibre GL JS (#2469). (The zoom events wait for #2474.)
+        // the release fires dragend and a second moveend, as in MapLibre GL JS (#2469). The zoom events fire in the call too (#2474).
         const dragEase = (lib, second, early) => page.evaluate(async ([lib, renderer, second, early]) => {
             const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
             if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
@@ -689,7 +689,7 @@ for (const mode of renderers) {
             const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             await new Promise(r => m.once('load', r));
             const log = [], c = m.getCanvas(), frame = () => new Promise(r => requestAnimationFrame(() => r()));
-            for (const t of ['movestart', 'dragstart', 'dragend', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            for (const t of ['movestart', 'zoomstart', 'dragstart', 'dragend', 'move', 'zoom', 'zoomend', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || (t !== 'move' && t !== 'zoom')) log.push(t); });
             const send = (type, [x, y]) => {
                 const o = {bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse', isPrimary: true, view: window};
                 c.dispatchEvent(lib === 'ml' ? new MouseEvent(type.replace('pointer', 'mouse'), o) : new PointerEvent(type, o));
@@ -699,10 +699,10 @@ for (const mode of renderers) {
             await new Promise(r => setTimeout(r, 200));
             log.push('|call'); m[second]({center: [30, 55], zoom: 6, duration: early ? 3000 : 300}); log.push('|ret');
             // (`early`: the pointer lifts while the ease still runs.)
-            // (It waits for the first `move` of the ease, not for a time: the report of the engine can come late. When the ease
+            // (It waits for the first `zoom` of the ease, not for a time: the report of the engine can come late. When the ease
             // has ended by then, the attempt is void and the caller tries again.)
             if (early) {
-                for (let i = 0; i < 200 && !log.slice(log.indexOf('|call')).includes('move'); i++) await new Promise(r => setTimeout(r, 25));
+                for (let i = 0; i < 200 && !log.slice(log.indexOf('|call')).includes('zoom'); i++) await new Promise(r => setTimeout(r, 25));
                 if (log.slice(log.indexOf('|call')).includes('moveend')) { m.remove(); el.remove(); return 'RETRY'; }
             } else for (let i = 0; i < 100 && !log.slice(log.indexOf('|call')).includes('moveend'); i++) await new Promise(r => setTimeout(r, 50));
             await new Promise(r => setTimeout(r, 100));
@@ -710,17 +710,18 @@ for (const mode of renderers) {
             if (early) for (let i = 0; i < 200 && log.slice(log.indexOf('|call')).filter(t => t === 'moveend').length < 2; i++) await new Promise(r => setTimeout(r, 25));
             else await new Promise(r => setTimeout(r, 600));
             m.remove(); el.remove();
-            return log.slice(log.indexOf('|call')).join(' ');
+            // (The number of frames differs between runs: a run of `move zoom` counts once.)
+            return log.slice(log.indexOf('|call')).join(' ').replace(/(move zoom)( move zoom)*/g, '$1');
         }, [lib, mode, second, early]).catch(e => String(e));
         for (const second of ['easeTo', 'flyTo']) {
             const ours = await dragEase('ours', second), ml = await dragEase('ml', second);
             check(`[${mode}] ${second} during a drag fires movestart inside the call and moveend, dragend and moveend after it, as in MapLibre GL JS (#2469)`,
-                ours === ml && ml === '|call movestart |ret move moveend dragend moveend', JSON.stringify({ours, ml}));
+                ours === ml && ml === '|call movestart zoomstart |ret move zoom zoomend moveend dragend moveend', JSON.stringify({ours, ml}));
             // The release during the ease fires the `moveend` of the drag, and the ease goes on without a second `movestart`.
             const attempt = async lib => { let out; for (let i = 0; i < 4 && (i === 0 || out === 'RETRY'); i++) out = await dragEase(lib, second, true); return out; };
             const earlyOurs = await attempt('ours'), earlyMl = await attempt('ml');
             check(`[${mode}] ${second} during a drag, released while it runs, fires dragend and moveend and then the rest of the ease with no second movestart, as in MapLibre GL JS (#2469)`,
-                earlyOurs === earlyMl && earlyMl === '|call movestart |ret move dragend moveend move moveend', JSON.stringify({earlyOurs, earlyMl}));
+                earlyOurs === earlyMl && earlyMl === '|call movestart zoomstart |ret move zoom dragend moveend move zoom zoomend moveend', JSON.stringify({earlyOurs, earlyMl}));
         }
         // resize() fires movestart, move, resize and moveend inside the call, also for an unchanged size, and the observer of
         // the container fires them once more after a change of the size, as in MapLibre GL JS (#2395).
@@ -752,8 +753,7 @@ for (const mode of renderers) {
             await new Promise(r => m.once('load', r));
             const log = [];
             for (const t of ['movestart', 'zoomstart', 'move', 'zoom', 'zoomend', 'moveend']) m.on(t, () => log.push(t));
-            // (MapLibre GL JS reads `around` as a position, and this entry reads a point of the screen in CSS pixels.)
-            m.easeTo({zoom: 5, duration: 0, around: lib === 'ml' ? m.unproject([100, 100]) : [100, 100]});
+            m.easeTo({zoom: 5, duration: 0, around: m.unproject([100, 100])});
             const sync = log.join(' '), c = m.getCenter(), z = m.getZoom();
             await new Promise(r => setTimeout(r, 800));
             m.remove(); el.remove();
@@ -762,6 +762,33 @@ for (const mode of renderers) {
         const aroundOurs = await aroundJump('ours'), aroundMl = await aroundJump('ml');
         check(`[${mode}] easeTo with around and duration 0 fires its events once, inside the call, as in MapLibre GL JS (#2394)`,
             aroundOurs === aroundMl && aroundMl.startsWith('movestart zoomstart move zoom zoomend moveend [') && aroundMl.endsWith(' 6'), JSON.stringify({aroundOurs, aroundMl}));
+        // `around` of easeTo is a position (any form of LngLatLike), not a point of the screen, and flyTo ignores it:
+        // the center after the move is the one of MapLibre GL JS (#2424).
+        const aroundAt = (lib, how, pg = page) => pg.evaluate(async ([lib, renderer, how]) => {
+            const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
+            if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
+            const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
+            const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
+            await new Promise(r => m.once('load', r));
+            const done = new Promise(r => m.once('moveend', r));
+            if (how === 'ease') m.easeTo({zoom: 5, duration: 0, around: [20, 20]});
+            else if (how === 'easeAnimated') m.easeTo({zoom: 5, duration: 200, around: {lng: 20, lat: 20}});
+            else if (how === 'fly') m.flyTo({zoom: 5, duration: 200, around: [20, 20], essential: true}); // (a flight ignores `around`)
+            else m.flyTo({zoom: 5, around: [20, 20]}); // (with reduced motion, flyTo is an easeTo, which reads `around`)
+            await done;
+            const c = m.getCenter(), z = m.getZoom();
+            m.remove(); el.remove();
+            return [+z.toFixed(3), +c.lng.toFixed(2), +c.lat.toFixed(2)];
+        }, [lib, mode, how]).catch(e => String(e));
+        for (const how of ['ease', 'easeAnimated', 'fly', 'flyReduced']) {
+            // (MapLibre GL JS reads the preference when its module loads, so the reduced-motion case has a page of its own.)
+            const pg = how === 'flyReduced' ? await browser.newPage({reducedMotion: 'reduce'}) : page;
+            if (pg !== page) { await pg.goto(`${origin}/?renderer=${mode}`); await pg.waitForFunction(() => window.mapLoaded, null, {timeout: 30000}); }
+            const [o, ml] = [await aroundAt('ours', how, pg), await aroundAt('ml', how, pg)];
+            if (pg !== page) await pg.close();
+            check(`[${mode}] ${how} with around as a position (flyTo ignores it) ends at the center of MapLibre GL JS (#2424)`,
+                Array.isArray(o) && Array.isArray(ml) && o.every((v, i) => Math.abs(v - ml[i]) < 0.02), JSON.stringify({o, ml}));
+        }
         // An easeTo or flyTo with no movement running fires movestart inside the call, also right after a jumpTo and for an
         // ease that leaves the view as it is, and the movement does not end before the animation, as in MapLibre GL JS (#2451).
         const firstEase = (lib, scenario) => page.evaluate(async ([lib, renderer, scenario]) => {
@@ -772,7 +799,7 @@ for (const mode of renderers) {
             await new Promise(r => m.once('load', r));
             await new Promise(r => setTimeout(r, 300));
             const log = [];
-            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || (t !== 'move' && t !== 'zoom')) log.push(t); });
             if (scenario === 'afterJump') m.jumpTo({center: [12, 46]});
             log.push('|call');
             if (scenario === 'flyTo') m.flyTo({center: [20, 50], duration: 600});
@@ -795,7 +822,7 @@ for (const mode of renderers) {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
             const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             await new Promise(r => m.once('load', r));
-            const log = []; for (const t of ['movestart', 'move', 'moveend', 'dragstart', 'drag', 'dragend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            const log = []; for (const t of ['movestart', 'move', 'moveend', 'dragstart', 'drag', 'dragend']) m.on(t, () => { if (log.at(-1) !== t || (t !== 'move' && t !== 'zoom')) log.push(t); });
             const marker = new mod.Marker().setLngLat([10, 45]).addTo(m).getElement();
             const c = m.getCanvas(), frame = () => new Promise(r => requestAnimationFrame(() => r()));
             const send = (type, [x, y]) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse', isPrimary: true}));
@@ -3394,14 +3421,47 @@ for (const mode of renderers) {
             out.cross = await ask(m, found[0] + 3, a.y);
             done();
             ({m, done} = await make([A], {'text-pitch-alignment': 'map', 'text-rotation-alignment': 'map'}, 60));
+            // (The text is found on the circles of placement, which end a little inside its first and last glyph: the column is
+            // the middle of the first circle that the row through the center of the map meets.)
             const c = m.project([0, 0]), across = [];
-            for (let dy = -30; dy <= 30; dy++) if (await ask(m, c.x, c.y + dy)) across.push(dy);
+            let left = 0;
+            while (left < 600 && !await ask(m, left, c.y)) left++;
+            for (let dy = -30; dy <= 30; dy++) if (await ask(m, left + 8, c.y + dy)) across.push(dy);
             out.pitch = [across[0], across.at(-1)];
             done();
             return out;
         });
         check('[main] queryRenderedFeatures: text on a line does not widen the query of a line with an icon, a glyph belongs to the street under it, and at pitch 60 the glyph boxes are centered on the line (#1735)',
             lineText.icon[0] === 'V' && lineText.icon[1] === '' && lineText.cross === 'A long label along the line' && lineText.pitch[0] < -5 && Math.abs(lineText.pitch[0] + lineText.pitch[1]) <= 2, JSON.stringify(lineText));
+        // A road that comes as three lines that meet end to end has one label, and the label belongs to one of the lines, as in
+        // MapLibre GL JS (#2460). A query of the whole view finds that line once, and a query on a glyph finds it where the glyph is,
+        // also over the part of the road that is another line. (The lines lie in one tile, and the label spans all three.)
+        const roadParts = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const line = (a, b) => ({type: 'Feature', properties: {name: 'A long label along the line'}, geometry: {type: 'LineString', coordinates: [a, b]}});
+            const out = {};
+            for (const renderer of ['main', 'worker']) {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const m = new mod.Map({container: el, renderer, center: [0, 0], zoom: 2, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data: {type: 'FeatureCollection', features: [line([-40, 0], [-13, 0]), line([-13, 0], [13, 0]), line([13, 0], [40, 0])]}}},
+                    layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-size': 16}}]}});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                // (The row through the road is scanned from end to end, because the text is found on its circles, which leave a gap
+                // between them and end inside its first and last glyph. `found` counts the hits in each of the three lines, and each line must have one.)
+                const y = m.project([0, 0]).y, found = [0, 0, 0], a = m.project([-40, 0]).x, b = m.project([40, 0]).x;
+                let most = 0;
+                for (let x = a; x < b; x += 2) {
+                    const n = (await m.queryRenderedFeatures([x, y], {layers: ['t']})).length, lng = -40 + (x - a) / (b - a) * 80;
+                    most = Math.max(most, n);
+                    if (n) found[lng < -13 ? 0 : lng < 13 ? 1 : 2]++;
+                }
+                out[renderer] = {all: (await m.queryRenderedFeatures({layers: ['t']})).length, most, found};
+                m.remove(); el.remove();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures finds the label of a road that comes as several lines once, with both renderers (#2460)',
+            ['main', 'worker'].every(r => roadParts[r].all === 1 && roadParts[r].most === 1 && roadParts[r].found.every(n => n > 0)), JSON.stringify(roadParts));
         // On the globe a query finds text on a line where its glyphs are drawn, as MapLibre GL JS does: the line between
         // two of its points is a curve on the screen, and the glyphs lie on that curve (#1995). The map is cut into cells
         // of 25 pixels; each cell with dark pixels of the text must be found by a query of the cell, at zoom 2.5 and across

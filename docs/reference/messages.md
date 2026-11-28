@@ -765,6 +765,14 @@ addProtocol("pmtiles"): the library reads pmtiles:// URLs itself and does not us
 new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob(), and remove the option.
 ```
 
+## E395
+
+`Warning` `Server renderer`
+
+```text
+server render: "pitch" is <pitch>, which is not a number. The view is drawn with a pitch of 0. Pass a number in degrees, for example pitch: 45.
+```
+
 ## E415
 
 `Error` `Both entries`
@@ -1923,10 +1931,24 @@ server render: the layer "<layerId>" is not drawn, because the server render doe
 
 ## E2513
 
+Removed after 0.11.0.
+
 `Warning` `Server renderer`
 
 ```text
 server render: the pitch is <pitch>, and the server render draws the first view flat, as if the pitch were 0, until #395. The map in the browser uses the pitch. When that is intended, nothing needs to change.
+```
+
+## E2555
+
+`Warning` `Compat entry` `Development build only`
+
+```text
+<where>: <why> The map draws the layer, and MapLibre GL JS writes a warning too. Write the whole filter in expression syntax.
+```
+
+```text
+<where>: <why>. The map draws the layer, and MapLibre GL JS writes a warning too. Write the whole filter in expression syntax.
 ```
 
 ## E10017

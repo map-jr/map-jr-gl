@@ -1,7 +1,0 @@
-{
-  "label": "line-pattern is sampled sharper than in MapLibre and scaled differently on narrow lines",
-  "decision": "later",
-  "issue": 1810,
-  "reason": "line-pattern is sampled sharper than in MapLibre and scaled differently on narrow lines.",
-  "pattern": "^(line-pattern/3x-on-2x-add-image|line-pattern/@2x|line-pattern/global-state|line-pattern/literal|line-pattern/overscaled|line-pattern/pitch|line-pattern/property-function|line-pattern/step-curve|line-pattern/with-dasharray|line-pattern/zoom-expression|regressions/mapbox-gl-js#8273|regressions/mapbox-gl-native#9976|regressions/maplibre-gl-js#7704-pattern)$"
-}

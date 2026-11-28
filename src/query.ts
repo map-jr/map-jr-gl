@@ -37,7 +37,7 @@ export interface TileQuery {
     sets?: QuerySet[];
 }
 /** A feature of a GeoJSON source as a tile gives it for a rectangle: `index` is its place in the data of the source. The engine removes it. */
-export type FoundFeature = QueriedFeature & {index?: number};
+export type FoundFeature = QueriedFeature & {index?: number; at?: string};
 /**
  * A key for a feature that several tiles hold, so that a query gives the feature one time: for a GeoJSON feature its
  * place in the data, and for another feature its id. Two GeoJSON features with the same id are two results, as in
@@ -46,9 +46,16 @@ export type FoundFeature = QueriedFeature & {index?: number};
 export function featureKey(f: FoundFeature): string {
     const i = f.index;
     delete f.index;
+    delete f.at;
     return f.id === undefined && i === undefined ? '' : `${i ?? ''}|${f.layer}|${f.source}|${f.sourceLayer}|${i === undefined ? f.id : ''}`;
 }
 export interface QuerySet {
+    /**
+     * A symbol layer: each feature gets `at`, the tile and the place of the feature in it, which the labels of the tile carry too
+     * (`LabelSrc.at`). The places listed here are found without the test of their geometry: the label of a feature can lie far
+     * from its line when it belongs to a road that comes in parts.
+     */
+    at?: number[];
     layer: string; sourceLayer?: string; filter?: unknown; also?: unknown; radius: number;
     /** A line layer: the rings of a polygon are drawn as lines, so a feature of a polygon is found near its rings only. */
     ring?: boolean;
@@ -177,14 +184,16 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery, states?: 
     const n = 2 ** q.z, toLngLat = (x: number, y: number) => [lngFromMerc((q.x + x / EXTENT) / n), latFromMerc((q.y + y / EXTENT) / n)];
     // Without sets there is one question for all the data. With sets (the style layers of a rendered-features query)
     // each feature is read one time and tested for each set.
-    const sets = (q.sets ?? [{layer: undefined as string | undefined, sourceLayer: undefined as string | undefined, filter: q.filter, also: undefined as unknown, radius: q.radius, ring: undefined as boolean | undefined}])
+    const sets = (q.sets ?? [{layer: undefined as string | undefined, sourceLayer: undefined as string | undefined, filter: q.filter, also: undefined as unknown, radius: q.radius, ring: undefined as boolean | undefined, at: undefined as number[] | undefined}])
         .map(s => ({...s, test: compileFilter(s.filter), test2: compileFilter(s.also),
             size: 'size' in s && s.size?.scale ? {...s.size, r: compileProp(s.size.a, 'number', s.size.line ? 1 : 5), w: compileProp(s.size.b, 'number', 0), o: compileProp(s.size.o, 'number', 0)} : null}));
     for (const name in layers) {
         if (q.sourceLayers && !q.sourceLayers.includes(name)) continue;
         const mine = q.sets ? sets.filter(s => s.sourceLayer ? s.sourceLayer === name : name === GEOJSON_LAYER || !s.layer) : sets;
         if (!mine.length) continue;
+        let at = -1;
         for (const f of layers[name].features) {
+            at++;
             f.state = f.id === undefined ? undefined : states?.[`${name === GEOJSON_LAYER ? '' : name}|${f.id}`];
             let c: number[] | null = null, geometry: QueriedFeature['geometry'];
             const ends: number[] = [];
@@ -205,10 +214,11 @@ export function queryTile(data: Uint8Array | TileLayers, q: TileQuery, states?: 
                     tc = []; te = [];
                     for (let i = 0, s = 0; i < ends.length; s = ends[i++]) tc.push(...c.slice(s * 2, ends[i] * 2), c[s * 2], c[s * 2 + 1]), te.push(tc.length / 2);
                 }
-                if (!touches(ring ? 2 : f.type, offset ? offsetLine(tc, te, offset) : tc, te, q.px, q.py, radius, q.box)) continue;
+                if (!touches(ring ? 2 : f.type, offset ? offsetLine(tc, te, offset) : tc, te, q.px, q.py, radius, q.box) && !set.at?.includes(at)) continue;
                 const feature: FoundFeature = {source: q.source, sourceLayer: name === GEOJSON_LAYER ? '' : name, id: f.id, type: TYPES[f.type], properties: f.properties};
                 if (set.layer !== undefined) feature.layer = set.layer;
                 if (q.box && f.index !== undefined) feature.index = f.index;
+                if (set.at) feature.at = `${q.z}/${q.x}/${q.y}/${at}`;
                 if (q.geometry) {
                     if (!geometry) {
                         const rings: number[][][] = [];
