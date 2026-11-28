@@ -186,6 +186,8 @@ The controls, the popup, the scale and the attribution of the compat entry keep 
 
 - MapLibre GL JS draws terrain at each tilt.
 - This library draws a flat map when you look vertically down. See [Terrain and elevation](../guide/terrain.md).
+- MapLibre GL JS draws the map at height 0 at once while the elevation tile under the center loads.
+- This library keeps the last picture for up to 3 s while that tile loads, so that the view does not jump when the height arrives. After 3 s it draws all layers on flat ground until the tile arrives. When the tile fails (an HTTP error or a network error), the ground there is at height 0 at once, as in MapLibre GL JS, and the tile is requested again after 0.5 s, 1 s and 2 s, and then every 15 s while the view needs it. MapLibre GL JS does not request a failed elevation tile again.
 
 ### Camera
 
