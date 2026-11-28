@@ -442,7 +442,7 @@ export interface MapState {
     hover: RenderedFeature[];
     /** Where the pointer is over the map, or `null` when it is not over the map. It can be one frame late. */
     pointer: PointerPosition | null;
-    /** The thread that renders the map, or `undefined` until `loaded` is `true`. */
+    /** The thread that renders the map, or `undefined` until `loaded` is `true`. It changes from `'worker'` to `'main'` at the next `idle` when the map moves to the main thread after `load` (after a lost WebGL context, or when the worker stops drawing). */
     renderer: 'worker' | 'main' | undefined;
     /** The color scheme of the controls: `colorScheme` of the description, with `'auto'` resolved. */
     colorScheme: 'light' | 'dark';
@@ -1049,7 +1049,8 @@ export function makeMap(container: HTMLElement | string, given: MapDescription, 
     let lit: {source: string; sourceLayer?: string; id: number | string} | undefined;
 
     map.on('load', () => state.set({loaded: true, renderer: map.renderer as MapState['renderer']}));
-    map.on('idle', () => state.set({idle: true}));
+    // (The map can move from the worker to the main thread after `load`: the new engine reports `idle`; #1840.)
+    map.on('idle', () => state.set({idle: true, ...(state.get().loaded && {renderer: map.renderer as MapState['renderer']})}));
     map.on('error', e => {
         const error = e.error instanceof Error ? e.error : new Error(String(e.error));
         // (This listener takes the place of the report of the map itself: an error must not be lost in silence.)

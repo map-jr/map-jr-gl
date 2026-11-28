@@ -69,6 +69,8 @@ before. React reads such a store with `useSyncExternalStore`, Vue with a `shallo
 - `pointer` is `null` before the first move of the mouse and after the mouse leaves the map. It changes at each move
   of the mouse, also without `interactiveLayers`, and a touch does not set it. A subscriber without a selector is
   therefore called at each move: subscribe to `state => state.pointer` where only the pointer matters.
+- `renderer` is set at `load`. It changes from `'worker'` to `'main'` at the next `idle` when the map moves to the main
+  thread after `load`, after a lost WebGL context or when the engine in the worker stops drawing.
 - `colorScheme` resolves `'auto'` with the media query `prefers-color-scheme`.
 
 The state has no field for errors. To receive each error of the map, set [`onError`](events.md#mapevents) in
