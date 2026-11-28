@@ -101,7 +101,9 @@ export class VTFeature {
                 open = true;
                 if (this.type === 1) close();
             } else if (cmd === 7) {
-                close();
+                // (A ClosePath has no numbers, so a count above 1 reads nothing more: the rest of the count is left out,
+                // or a tile with a count of 2^28 in a few bytes would keep the worker in this loop.)
+                close(); len = 0;
             } else throw new Error('Unknown vector tile command ' + cmd);
         }
         close();

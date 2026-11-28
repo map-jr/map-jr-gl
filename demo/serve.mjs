@@ -178,6 +178,8 @@ http.createServer(async (req, res) => {
             // /static shows the server output alone; /ssr also loads the client, which takes over the same element.
             return send(200, 'text/html', page(frame + (url.pathname === '/ssr' ? client() : ''), url.pathname === '/ssr' ? preload : ''));
         }
+        // (DIST names another folder of built files, so that test/bench/compare.mjs can serve two builds side by side.)
+        if (url.pathname.startsWith('/dist/') && process.env.DIST) return send(200, 'text/javascript', await readFile(path.join(process.env.DIST, path.normalize(url.pathname.slice(6)))));
         if (url.pathname.startsWith('/dist/') || url.pathname.startsWith('/demo/')) {
             return send(200, 'text/javascript', await readFile(path.join(root, url.pathname)));
         }

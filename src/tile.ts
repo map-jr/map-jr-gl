@@ -75,6 +75,8 @@ export interface Batch {
     base?: Float32Array;
     /** The height and the base are the same for the whole layer: the page draws them at the zoom of the map, so that they transition (#972). The batch has height 1 and base 0. */
     lift?: boolean;
+    /** The order of the triangles shows in the picture (a sort key, or an image along a line), so `cellsOf` keeps it. */
+    ordered?: boolean;
     /** Building extrusions with fill-extrusion-pattern: the walls carry the distance along their ring, for the image. */
     ed?: boolean;
     /** A pattern with a value for each feature: the image of the features of this batch (see `patternKey`). */
@@ -153,14 +155,14 @@ export interface IconBatch {
     avoid?: boolean;
 }
 /** `z`: the zoom that the sizes of the tile were found at, when it is not the zoom of the tile (see `buildTile`). */
-export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; /** When the fetched tile is out of date, and its `ETag` (see `TileFetchState`). */ expires?: number; etag?: string }
+export interface TileIR { layers: Record<string, Batch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; /** A build of the layers that read feature state (`TileRequest.state`) for a tile that has none of the changed features: nothing was built. */ same?: boolean; /** When the fetched tile is out of date, and its `ETag` (see `TileFetchState`). */ expires?: number; etag?: string }
 
-export type GLBatch = {/** See `Batch.pat` and `Batch.dash`. */ pat?: string; dash?: number[]} & (
+export type GLBatch = {/** See `Batch.pat` and `Batch.dash`. */ pat?: string; dash?: number[]; /** See `cellsOf`. */ cells?: Float32Array} & (
     | {type: 'fill'; /** Whole tile units, or floats where a GeoJSON polygon has halves of a unit. */ pos: Int16Array | Float32Array; idx: Uint32Array; color?: Uint8Array; /** Polygon edges as vertex index pairs, drawn as one-pixel antialiased lines. */ edges?: Uint32Array}
     | {type: 'extrusion'; v: Float32Array; idx: Uint32Array; color?: Uint8Array; /** Distance along the ring per vertex, for a pattern. */ ed?: Float32Array; /** See `Batch.lift`. */ lift?: boolean; /** The centroid of each vertex's polygon, in tile units: on 3D terrain the ground under it lifts the polygon. */ c: Int16Array}
     | {type: 'line'; /** Packed vertices, LINE_VERTEX bytes each: see tessellateLine. */ v: Uint8Array; idx: Uint32Array; color?: Uint8Array; width?: Float32Array; width1?: Float32Array; /** See `Batch.feat`, for each vertex. */ feat?: Float32Array; featMask?: number; /** See `Batch.most`. */ most?: number[]}
     | {type: 'circle'; /** x, y, cornerX, cornerY per vertex */ pos: Int16Array; idx: Uint32Array; color?: Uint8Array; radius?: Float32Array; radius1?: Float32Array; /** Each point is a grid of 4 × 4 corners, in sevenths (see `tessellate`). */ grid?: boolean; /** See `Batch.stroke`, `Batch.sb`, `Batch.feat` and `Batch.stroke1`, for each vertex. */ stroke?: Uint8Array; sb?: Float32Array; feat?: Float32Array; featMask?: number; stroke1?: Uint8Array});
-export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; expires?: number; etag?: string;
+export interface TileGL { layers: Record<string, GLBatch>; labels: Record<string, LabelSrc[]>; icons?: Record<string, IconBatch>; z?: number; expires?: number; etag?: string; /** See `TileIR.same`. */ same?: boolean;
     /** A part that the tile could not use (the cut for the globe): the message of its failure. */ fault?: string }
 /** A raster tile as the SVG backend sees it: just somewhere to load the image from. */
 export interface TileImage { href: string }
@@ -453,6 +455,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (line) { batch.cap = p.cap.eval(zs); batch.join = p.join.eval(zs); batch.miterLimit = p.miterLimit.eval(zs); batch.roundLimit = p.roundLimit.eval(zs); batch.sharp = ov > 16 ? 0 : 15 * EXTENT / 512 / ov; }
             if (L.type === 'fill') { batch.outline = p.outline.eval(zs)[3] > 0; batch.antialias = p.antialias.eval(zs) !== false; }
             if (byDash) batch.dash = JSON.parse(pat); else if (pat) batch.pat = pat;
+            if (sortKey || line && (pat || p.pattern.zoom || p.pattern.eval(zs))) batch.ordered = true;
             if (heat) batch.heat = true;
             out.layers[patternKey(L.id, k++)] = batch;
         }
@@ -591,7 +594,7 @@ export function globeBuild(id: {z: number; y: number}, zoom = id.z): GlobeBuild 
  * Expands a neutral batch into vertex and index buffers for the GPU. With `globe` (a map that can show the globe),
  * fills and lines are cut along a grid first (see subdivide.ts); without it the result is what it always was.
  */
-export function tessellate(b: Batch, globe?: GlobeCut): GLBatch | null {
+export function tessellate(b: Batch, globe?: GlobeCut, /** Gets the groups of the triangles, for `cellsOf` (not for a tile that is cut for the globe). */ groups?: number[]): GLBatch | null {
     if (globe && b.type !== 'circle' && !b.height) return b.type === 'fill' ? tessellateGlobeFill(b, globe) : tessellateLine({...b, geom: cutRings(b.geom, globe, false)});
     const {coords, ringEnds, featEnds} = b.geom;
     if (b.type === 'circle') {
@@ -617,10 +620,12 @@ export function tessellate(b: Batch, globe?: GlobeCut): GLBatch | null {
     }
     const idx: number[] = [];
     if (b.type === 'fill') {
-        if (b.height) return tessellateExtrusion(b, globe);
+        if (b.height) return tessellateExtrusion(b, globe, groups);
         const color = b.color ? new Uint8Array(coords.length * 2) : undefined, pos = b.geom.half ? Float32Array.from(coords, t => t / 2) : coords as Int16Array;
         for (let f = 0; f < featEnds.length; f++) {
             eachPolygon(b.geom, f, (p0, p1, holes) => {
+                // (The box has the holes too: in a polygon that is not valid a hole can lie outside the outer ring.)
+                if (groups) group(groups, idx.length, coords, p0, p1, b.geom.half ? 2 : 1);
                 const tris = earcut(coords.subarray(p0 * 2, p1 * 2) as any, holes);
                 for (let i = 0; i < tris.length; i++) idx.push(tris[i] + p0);
                 if (color) for (let i = p0; i < p1; i++) color.set(b.color!.subarray(f * 4, f * 4 + 4), i * 4);
@@ -643,7 +648,7 @@ export function tessellate(b: Batch, globe?: GlobeCut): GLBatch | null {
         return {type: 'fill', pos, idx: Uint32Array.from(idx), color, edges};
     }
 
-    return tessellateLine(b);
+    return tessellateLine(b, groups);
 }
 
 /**
@@ -759,24 +764,36 @@ const outside = (c: ArrayLike<number>, s: number, e: number) => {
  * the light. With `globe`, the roof is cut as a fill is (without the caps at the poles) and each wall is cut where its
  * edge crosses a line of the grid, as MapLibre GL JS does, so that both follow the sphere.
  */
-function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
+function tessellateExtrusion(b: Batch, globe?: GlobeCut, groups?: number[]): GLBatch | null {
     // (The geometry is in halves of a tile unit, as exact as in MapLibre GL JS, whose GeoJSON tiles are 8192 units wide:
     // a rounding to whole units moves an edge by up to 1/16 of a pixel and can leave a row of pixels out (#1803). The
     // vertices are floats, so they keep the halves.)
-    const geom = b.geom.half ? {...b.geom, coords: Float32Array.from(b.geom.coords, t => t / 2)} : b.geom;
-    const {featEnds} = geom, v: number[] = [], idx: number[] = [], feats: number[] = [], ed: number[] = [], cen: number[] = [];
-    let count = 0;
+    let geom = b.geom;
+    if (geom.half) { const from = geom.coords, coords = new Float32Array(from.length); for (let i = 0; i < from.length; i++) coords[i] = from[i] / 2; geom = {...geom, coords}; }
+    // The buffers have room for the polygons of a tile that is not cut for the globe (a vertex for each point on the
+    // roof and four for its wall, and 9 indices a point; `room` adds more for a polygon with many holes), so they are filled without a copy: a tile of a city
+    // has hundreds of thousands of these numbers, and lists that grow were a third of the time of this function.
+    const {featEnds} = geom, points = geom.coords.length / 2;
+    let v = new Float32Array(points * 20), idx = new Uint32Array(points * 9), feats = new Uint32Array(points * 5), ed = new Float32Array(b.ed ? points * 5 : 0), c = new Int16Array(points * 10);
+    let count = 0, used = 0;
+    const grow = <T extends Float32Array | Uint32Array | Int16Array>(a: T, n: number): T => { const out = new (a.constructor as new (n: number) => T)(n); out.set(a); return out; };
+    /** Makes room for `nv` more vertices and `ni` more indices. */
+    const room = (nv: number, ni: number) => {
+        if (count + nv > feats.length) {
+            const n = Math.max(feats.length * 2, count + nv);
+            v = grow(v, n * 4); feats = grow(feats, n); c = grow(c, n * 2);
+            if (b.ed) ed = grow(ed, n);
+        }
+        if (used + ni > idx.length) idx = grow(idx, Math.max(idx.length * 2, used + ni));
+    };
+    const other = (h: number) => WALL_OTHER * Math.floor(Math.min(60000, Math.max(0, h)));
     for (let f = 0; f < featEnds.length; f++) {
-        const top = b.height![f], bottom = Math.min(b.base ? b.base[f] : 0, top);
-        const vert = (x: number, y: number, z: number, light: number, d = 0) => {
-            v.push(x, y, z, light);
-            if (b.ed) ed.push(d);
-            feats.push(f);
-            return count++;
-        };
+        const top = b.height![f], bottom = Math.min(b.base ? b.base[f] : 0, top), otherTop = other(top), otherBottom = other(bottom);
         eachPolygon(geom, f, (p0, p1, holes) => {
             let coords: ArrayLike<number> = geom.coords.subarray(p0 * 2, p1 * 2), bounds = [0, ...holes, p1 - p0];
             if (outside(coords, 0, bounds[1])) return;
+            // (The box has the holes too: in a polygon that is not valid a hole can lie outside the outer ring.)
+            if (groups) group(groups, used, coords, 0, p1 - p0, 1, top);
             // On 3D terrain, MapLibre GL JS lifts each polygon by the ground at its centroid (the mean of its points,
             // without the closing point of a ring), so the roof stays flat and every part of a MultiPolygon has its own.
             // The centroid is that of the piece of the polygon in this tile, as in MapLibre GL JS, so it lies in the
@@ -788,10 +805,12 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
                 if (i === bounds[r + 1] - 1 && coords[i * 2] === coords[bounds[r] * 2] && coords[i * 2 + 1] === coords[bounds[r] * 2 + 1]) continue;
                 cx += coords[i * 2]; cy += coords[i * 2 + 1]; cn++;
             }
-            const centroid = () => { cen.push(first, count, Math.floor(cx / cn), Math.floor(cy / cn)); };
+            // (Each vertex of the polygon gets the centroid.)
+            const centroid = () => { const x = Math.floor(cx / cn), y = Math.floor(cy / cn); for (let i = first; i < count; i++) { c[i * 2] = x; c[i * 2 + 1] = y; } };
             const roof = count, cut = globe && globe.cutFill([[{coords, holes}]], {grid: globe.grid}), pos = cut ? cut.pos : coords, tris = cut ? cut.idx : earcut(coords as any, holes);
-            for (let i = 0; i < pos.length; i += 2) vert(pos[i], pos[i + 1], top, ROOF);
-            for (let i = 0; i < tris.length; i++) idx.push(roof + tris[i]);
+            room(pos.length / 2, tris.length);
+            for (let i = 0; i < pos.length; i += 2, count++) { const o = count * 4; v[o] = pos[i]; v[o + 1] = pos[i + 1]; v[o + 2] = top; v[o + 3] = ROOF; feats[count] = f; }
+            for (let i = 0; i < tris.length; i++) idx[used++] = roof + tris[i];
             if (top <= bottom) return centroid();
             if (globe) {
                 // (cutLine repeats the first point of a ring at its end: it is dropped.)
@@ -814,27 +833,35 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
                     if (len && d + len > EXTENT * 4) d = 0; // (32768 units of MapLibre GL JS)
                     dist.push(d); d += len;
                 }
+                room(n * 4, n * 6);
                 for (let i = s, j = e - 1; i < e; j = i++) {
                     const ax = coords[j * 2], ay = coords[j * 2 + 1], bx = coords[i * 2], by = coords[i * 2 + 1], len = Math.hypot(bx - ax, by - ay);
                     if (!len || buffer(coords, i, j)) continue;
-                    const facing = Math.atan2(-(bx - ax) * out, (by - ay) * out) + Math.PI, other = (h: number) => WALL_OTHER * Math.floor(Math.min(60000, Math.max(0, h)));
-                    const low = facing + other(top), high = facing + WALL_TOP + other(bottom);
+                    const facing = Math.atan2(-(bx - ax) * out, (by - ay) * out) + Math.PI;
+                    const low = facing + otherTop, high = facing + WALL_TOP + otherBottom;
                     const d = dist[(i - s + n - 1) % n] ?? 0;
-                    const q = vert(ax, ay, bottom, low, d + len);
-                    vert(bx, by, bottom, low, d); vert(bx, by, top, high, d); vert(ax, ay, top, high, d + len);
+                    // The four corners of the wall: the two at the bottom, then the two at the top.
+                    const q = count, o = q * 4;
+                    v[o] = ax; v[o + 1] = ay; v[o + 2] = bottom; v[o + 3] = low;
+                    v[o + 4] = bx; v[o + 5] = by; v[o + 6] = bottom; v[o + 7] = low;
+                    v[o + 8] = bx; v[o + 9] = by; v[o + 10] = top; v[o + 11] = high;
+                    v[o + 12] = ax; v[o + 13] = ay; v[o + 14] = top; v[o + 15] = high;
+                    feats[q] = feats[q + 1] = feats[q + 2] = feats[q + 3] = f;
+                    if (b.ed) { ed[q] = ed[q + 3] = d + len; ed[q + 1] = ed[q + 2] = d; }
+                    count += 4;
                     // (The renderer draws one side of each face, so the outside of a wall winds as the roof does: a ring wound
                     // the other way turns the two triangles round; see `drawLayers` in gl.ts.)
-                    if (out > 0) idx.push(q, q + 1, q + 2, q, q + 2, q + 3); else idx.push(q, q + 2, q + 1, q, q + 3, q + 2);
+                    idx[used] = idx[used + 3] = q;
+                    if (out > 0) { idx[used + 1] = q + 1; idx[used + 2] = idx[used + 4] = q + 2; idx[used + 5] = q + 3; }
+                    else { idx[used + 1] = idx[used + 5] = q + 2; idx[used + 2] = q + 1; idx[used + 4] = q + 3; }
+                    used += 6;
                 }
             }
             centroid();
         });
     }
-    if (!idx.length) return null;
-    // (cen has the first vertex, the end and the centroid of each polygon.)
-    const c = new Int16Array(count * 2);
-    for (let k = 0; k < cen.length; k += 4) for (let i = cen[k]; i < cen[k + 1]; i++) { c[i * 2] = cen[k + 2]; c[i * 2 + 1] = cen[k + 3]; }
-    return {type: 'extrusion', v: Float32Array.from(v), idx: Uint32Array.from(idx), color: perVertex(b.color, feats, featEnds.length), ed: b.ed ? Float32Array.from(ed) : undefined, c, lift: b.lift};
+    if (!used) return null;
+    return {type: 'extrusion', v: v.slice(0, count * 4), idx: idx.slice(0, used), color: perVertex(b.color, feats.subarray(0, count), featEnds.length), ed: b.ed ? ed.slice(0, count) : undefined, c: c.slice(0, count * 2), lift: b.lift};
 }
 
 const ARC_STEP = Math.PI / 5;
@@ -870,12 +897,17 @@ function perVertex<T extends Uint8Array | Float32Array>(a: T | undefined, feats:
 /** The cosine of half the turn above which a corner is sharp: a turn of 75 degrees, as in MapLibre GL JS. */
 const COS_SHARP = Math.cos(75 / 2 * Math.PI / 180);
 
-function tessellateLine(b: Batch): GLBatch | null {
+function tessellateLine(b: Batch, groups?: number[]): GLBatch | null {
     // (Positions are in halves of a tile unit throughout, so that they stay small integers, which is faster; lengths are
     // in tile units.)
     const {coords, ringEnds, featEnds} = b.geom, k = b.geom.half ? 1 : 2;
     // (`feats`: the feature of each vertex, for the numbers of each feature; see `perVertex`.)
-    const v: number[] = [], idx: number[] = [], color: number[] = [], feats: number[] = [];
+    const idx: number[] = [], color: number[] = [], feats: number[] = [];
+    // The vertices are written as they are made, packed to 16 bytes each (it was 24 as plain floats): lines are most of
+    // a tile, and every byte is uploaded. (A list of their numbers that was packed at the end took a tenth of the time
+    // of this function.) The buffer has room for four vertices a point, and grows for a line with many round joins.
+    let packed = new ArrayBuffer(Math.max(64, coords.length * 2) * LINE_VERTEX), view = new DataView(packed);
+    const half = (t: number) => Math.max(-32768, Math.min(32767, Math.round(t)));
     const round = b.join === 'round';
     // As in MapLibre GL JS: a corner whose miter is longer than the limit (1 / cos of half the turn, in line widths)
     // gets a bevel or a round join; a bevel join keeps sharp the corners whose miter is shorter than 1.05.
@@ -891,7 +923,13 @@ function tessellateLine(b: Batch): GLBatch | null {
             // end, whatever its length. The same is done here, so that the dashes are those of MapLibre.
             dist = part * 16383.5;
         }
-        v.push(x, y, nx, ny, side, dist);
+        const o = count * LINE_VERTEX;
+        if (o + LINE_VERTEX > packed.byteLength) { const more = new ArrayBuffer(packed.byteLength * 2); new Uint8Array(more).set(new Uint8Array(packed)); packed = more; view = new DataView(packed); }
+        view.setInt16(o, half(x), true); view.setInt16(o + 2, half(y), true);
+        view.setInt16(o + 4, Math.round(nx * LINE_NORMAL), true); view.setInt16(o + 6, Math.round(ny * LINE_NORMAL), true);
+        view.setInt16(o + 8, side, true);
+        if (b.offset) view.setInt16(o + 10, Math.max(-32768, Math.min(32767, Math.round(b.offset[f] * 8))), true);
+        view.setFloat32(o + 12, dist, true);
         feats.push(f);
         return count++;
     };
@@ -960,6 +998,13 @@ function tessellateLine(b: Batch): GLBatch | null {
                 last = a;
             };
             for (let i = 0; i < n - 1; i++) {
+                // (A group of `cellsOf`: the triangles of LINE_GROUP segments, whose vertices are at the points from
+                // the one before the first segment to the one after the last, or on the segments between them.)
+                if (groups && i % LINE_GROUP === 0) {
+                    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+                    for (let j = i ? i - 1 : 0, e = Math.min(n, i + LINE_GROUP + 2); j < e; j++) { const x = xs[j], y = ys[j]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+                    groups.push(idx.length, x0 / 2, y0 / 2, x1 / 2, y1 / 2, 0);
+                }
                 const x = xs[i], y = ys[i], ex = xs[i + 1] - x, ey = ys[i + 1] - y, len2 = Math.hypot(ex, ey), len = len2 / 2;
                 const dx = ex / len2, dy = ey / len2, nx = -dy, ny = dx;
                 if (i === 0) {
@@ -1027,27 +1072,122 @@ function tessellateLine(b: Batch): GLBatch | null {
         }
     }
     if (!idx.length) return null;
-    // Packed to 16 bytes a vertex (it was 24 as plain floats): lines are most of a tile, and every byte is uploaded.
-    const packed = new ArrayBuffer(count * LINE_VERTEX), view = new DataView(packed), half = (t: number) => Math.max(-32768, Math.min(32767, Math.round(t)));
-    for (let i = 0, o = 0; i < count; i++, o += LINE_VERTEX) {
-        view.setInt16(o, half(v[i * 6]), true); view.setInt16(o + 2, half(v[i * 6 + 1]), true);
-        view.setInt16(o + 4, Math.round(v[i * 6 + 2] * LINE_NORMAL), true); view.setInt16(o + 6, Math.round(v[i * 6 + 3] * LINE_NORMAL), true);
-        view.setInt16(o + 8, v[i * 6 + 4], true);
-        if (b.offset) view.setInt16(o + 10, Math.max(-32768, Math.min(32767, Math.round(b.offset[feats[i]] * 8))), true);
-        view.setFloat32(o + 12, v[i * 6 + 5], true);
-    }
     const each = <T extends Uint8Array | Float32Array>(a?: T) => perVertex(a, feats, featEnds.length);
-    return {type: 'line', v: new Uint8Array(packed), idx: Uint32Array.from(idx), color: b.progress ? Uint8Array.from(color) : each(b.color), width: each(b.width), width1: each(b.width1), feat: each(b.feat), featMask: b.featMask, most: b.most};
+    return {type: 'line', v: new Uint8Array(packed.slice(0, count * LINE_VERTEX)), idx: Uint32Array.from(idx), color: b.progress ? Uint8Array.from(color) : each(b.color), width: each(b.width), width1: each(b.width1), feat: each(b.feat), featMask: b.featMask, most: b.most};
+}
+
+/** The floats of one cell of `GLBatch.cells`, and the floats before the first cell. */
+export const CELL = 7, CELL_HEAD = 2;
+/** A batch with fewer triangles than four times this is one cell, and a cell of a larger batch has about this many. */
+const CELL_TRIANGLES = 128;
+/** A batch with fewer numbers of coordinates than this is one cell (see `toGL`). */
+const SMALL_BATCH = 1024;
+/** The numbers of one group of `cellsOf`, and the segments of a line in one group. */
+const GROUP = 6, LINE_GROUP = 16;
+/**
+ * The longest direction of a line vertex, in line widths: its two numbers are 16-bit integers of LINE_NORMAL to the unit
+ * (see `tessellateLine`), so neither is above 4.
+ */
+const LINE_REACH = Math.SQRT2 * 32768 / LINE_NORMAL;
+/** The bits of a number below 16 with a zero bit between them: the place of a cell on the Z curve is that of its x, and that of its y one bit higher. */
+const Z_CURVE = Uint8Array.from({length: 16}, (_, v) => (v & 1) | (v & 2) << 1 | (v & 4) << 2 | (v & 8) << 3);
+
+/** Adds a group of `cellsOf` that starts at the index `start`: the box of the points `s` to `e` of `c` (in units of 1 / `k` of a tile unit), and its height. */
+function group(groups: number[], start: number, c: ArrayLike<number>, s: number, e: number, k: number, top = 0) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = s * 2; i < e * 2; i += 2) { const x = c[i], y = c[i + 1]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    groups.push(start, x0 / k, y0 / k, x1 / k, y1 / k, top);
+}
+
+/**
+ * Divides the triangles of a fill, a line or an extrusion among the cells of a grid over the tile, so that the renderer
+ * can leave out the cells that are not in the view (`inView` in gl.ts): a tile of the view is often mostly off the
+ * screen, above all a tile of the deepest level of its source on a map that is zoomed in further.
+ *
+ * `groups` comes from `tessellate`: for each polygon, and for each few segments of a line, the index where its
+ * triangles start, a box in tile units that has all their vertices (x0, y0, x1, y1), and their height. The groups go
+ * to the cell of the middle of their box, and the indices are sorted by cell, in the order of a Z curve, so that the
+ * cells of a part of the tile are ranges that lie together; within a cell the groups keep their order. `cells` then has
+ * the longest direction of a line vertex (in line widths) and the largest `line-width` of a feature, and for each cell
+ * that is not empty its first index, its count of indices, the box of its groups and its largest height.
+ *
+ * Sorting changes the order in which the triangles of a batch are drawn. Where two triangles of one color overlap, the
+ * result is the same in either order (to the rounding of a color channel). A batch whose triangles differ in color, or
+ * whose order shows in another way (`ordered`), is not sorted: its cells are runs of groups in their order. The
+ * buildings of a fill-extrusion layer are never sorted: each pixel takes the wall that is drawn first, and the shade of
+ * a wall depends on the height of its building, so where the walls of a building and of its part lie in one plane, the
+ * order shows.
+ */
+export function cellsOf(g: GLBatch, groups: number[], ordered?: boolean) {
+    const idx = g.idx, total = idx.length, n = groups.length / GROUP;
+    if (!n || groups[0] || total >= 1 << 24) return;
+    const keep = ordered || !!g.color || g.type === 'extrusion';
+    // (The side of the grid is a power of 2 up to 16, with about CELL_TRIANGLES triangles in a cell. A batch that keeps
+    // its order has up to 256 cells of that many triangles or more.)
+    const side = keep ? 1 : Math.min(16, 2 ** Math.max(0, Math.floor(Math.log2(total / 3 / CELL_TRIANGLES) / 2))), run = Math.max(CELL_TRIANGLES * 3, Math.ceil(total / 256));
+    const count = keep ? Math.ceil(total / run) : side * side, grid = side > 1, scale = side / EXTENT / 2;
+    const of = new Uint8Array(n), sizes = new Uint32Array(count), box = new Float32Array(count * 5);
+    for (let c = 0; c < count; c++) { box[c * 5] = box[c * 5 + 1] = Infinity; box[c * 5 + 2] = box[c * 5 + 3] = -Infinity; }
+    for (let i = 0, q = 0; i < n; i++, q += GROUP) {
+        const start = groups[q], x0 = groups[q + 1], y0 = groups[q + 2], x1 = groups[q + 3], y1 = groups[q + 4];
+        let c = 0;
+        if (grid) {
+            // (The cell of the middle of the box; x and y have their bits in turn, which is the Z curve.)
+            let cx = (x0 + x1) * scale | 0, cy = (y0 + y1) * scale | 0;
+            cx = cx < 0 ? 0 : cx >= side ? side - 1 : cx; cy = cy < 0 ? 0 : cy >= side ? side - 1 : cy;
+            c = Z_CURVE[cx] | Z_CURVE[cy] << 1;
+        } else if (keep) c = start / run | 0;
+        of[i] = c;
+        sizes[c] += (i + 1 < n ? groups[q + GROUP] : total) - start;
+        const o = c * 5;
+        if (x0 < box[o]) box[o] = x0;
+        if (y0 < box[o + 1]) box[o + 1] = y0;
+        if (x1 > box[o + 2]) box[o + 2] = x1;
+        if (y1 > box[o + 3]) box[o + 3] = y1;
+        if (groups[q + 5] > box[o + 4]) box[o + 4] = groups[q + 5];
+    }
+    const starts = new Uint32Array(count);
+    for (let c = 1; c < count; c++) starts[c] = starts[c - 1] + sizes[c - 1];
+    if (grid) {
+        const sorted = new Uint32Array(total), next = starts.slice();
+        for (let i = 0, q = 0; i < n; i++, q += GROUP) {
+            const start = groups[q], end = i + 1 < n ? groups[q + GROUP] : total;
+            let o = next[of[i]];
+            // (Most groups are a few dozen indices: a loop copies them faster than a view of the list does.)
+            if (end - start < 512) for (let k = start; k < end; k++) sorted[o++] = idx[k];
+            else sorted.set(idx.subarray(start, end), o);
+            next[of[i]] += end - start;
+        }
+        g.idx = sorted;
+    }
+    const cells = new Float32Array(CELL_HEAD + count * CELL);
+    cells[0] = LINE_REACH; cells[1] = g.type === 'line' ? g.most?.[0] ?? 0 : 0;
+    let o = CELL_HEAD;
+    for (let c = 0; c < count; c++) if (sizes[c]) { cells[o] = starts[c]; cells[o + 1] = sizes[c]; cells.set(box.subarray(c * 5, c * 5 + 5), o + 2); o += CELL; }
+    g.cells = o < cells.length ? cells.slice(0, o) : cells;
 }
 
 /** `globe`: the tile is built for a map that can show the globe (see `tessellate`), with the code of the cut. */
 export function toGL(ir: TileIR, globe?: GlobeCut): {tile: TileGL; transfer: ArrayBuffer[]} {
-    const tile: TileGL = {layers: {}, labels: ir.labels, icons: ir.icons, z: ir.z, expires: ir.expires, etag: ir.etag}, transfer = new Set<ArrayBuffer>(), next: Record<string, number> = {};
+    const groups2: number[] = [];
+    const tile: TileGL = {layers: {}, labels: ir.labels, icons: ir.icons, z: ir.z, expires: ir.expires, etag: ir.etag, same: ir.same}, transfer = new Set<ArrayBuffer>(), next: Record<string, number> = {};
     for (const b of Object.values(ir.icons ?? {})) for (const a of Object.values(b)) if (ArrayBuffer.isView(a)) transfer.add(a.buffer as ArrayBuffer);
     for (const id in ir.layers) {
         const b = ir.layers[id];
-        const g = tessellate(b, globe);
+        // (A tile that is cut for the globe is drawn on the sphere, where the cells are not used. A circle has none. A line
+        // with a gap, a blur or an offset for each feature has none: its reach past its vertices is not known to the renderer.)
+        const cells = !(globe || b.type === 'circle' || b.type === 'line' && (b.feat || b.offset));
+        // (A batch of few points is one cell: its box comes from its points in one pass, and the tessellation makes no groups.)
+        const small = cells && b.geom.coords.length < SMALL_BATCH, groups: number[] | undefined = cells && !small ? [] : undefined;
+        const g = tessellate(b, globe, groups);
         if (!g) continue;
+        if (small) {
+            let top = 0;
+            for (const h of b.height ?? []) if (h > top) top = h;
+            group(groups2, 0, b.geom.coords, 0, b.geom.coords.length / 2, b.geom.half ? 2 : 1, top);
+            cellsOf(g, groups2, true);
+            groups2.length = 0;
+        } else if (groups) cellsOf(g, groups, b.ordered);
         if (b.pat) g.pat = b.pat;
         if (b.dash) g.dash = b.dash;
         // (The batches of the images of a layer are numbered again without gaps: one that has no triangles is left out.)

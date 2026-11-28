@@ -35,6 +35,8 @@ function hostile(): [string, Uint8Array][] {
         ['feature geometry with a huge length', feature([0x18, 3, ...lenOnly(4, huge)])],
         ['feature tags with a huge length', feature(lenOnly(2, huge))],
         ['geometry: ClosePath with a huge count', feature([0x18, 3, ...field(4, varint((2 ** 28 - 1) * 8 + 7))])],
+        // (Each count would be 2^28 turns of the loop that read nothing, once for each command.)
+        ['geometry: many ClosePath with a huge count', feature([0x18, 3, ...field(4, Array(40).fill(varint((2 ** 28 - 1) * 8 + 7)).flat())])],
         ['geometry: LineTo with a huge count', feature([0x18, 2, ...field(4, [9, 2, 2, ...varint((2 ** 28 - 1) * 8 + 2)])])],
         ['geometry: unknown command', feature([0x18, 2, ...field(4, [5])])],
         ['value: float past the end', field(3, [...field(1, [0x61]), ...field(4, [0x15, 1])])],

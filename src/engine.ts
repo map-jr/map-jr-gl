@@ -170,7 +170,7 @@ function sourceSignature(style: ResolvedStyle, name: string): [string, string] {
     return [source, json.includes('"global-state"') ? json + JSON.stringify(style.state ?? {}) : json];
 }
 
-interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string; /** When the tile is out of date (`Date.now()`, see `expire`), and how many loads in a row came back out of date. */ expires?: number; late?: number; /** The last reload of the expired tile failed: the next failures in a row fire no `error` (#2072). */ reloadFailed?: boolean; /** The data of its source changed (`newData`): its next rebuild reports a `tileLoaded`, as a reload in MapLibre GL JS fires `sourcedata` (#2051). */ reload?: boolean; /** The `ETag` of the response of a vector tile: a reload of the expired tile with the same `ETag` (a 304) reports no `tileLoaded`, as in MapLibre GL JS (#2136). */ etag?: string; /** A tile that the engine requested for its overview and that no view has needed: its loads report no `tileLoaded`, as MapLibre GL JS does not load it (#2135). */ quiet?: boolean }
+interface TileState { state: 'loading' | 'ok' | 'error'; gl?: GLTile; /** Feature state changed, and the layers that read it are built again (see `rebuildState`). */ stateStale?: boolean; /** How many changes of feature state of the source the tile has (see `stateLog`): none when that is not known. */ stateSeen?: number; /** An image tile that the server does not have (404). */ missing?: boolean; /** The zoom that the tile was built for (see `buildZoom`). */ band?: number; /** A number that changes each time the state or the content of the tile changes. */ rev?: number; /** Elevation tiles shaping 3D terrain: the lowest and highest ground on the tile, in meters. */ range?: [number, number]; /** An elevation tile: its heights, for when it shapes 3D terrain (see `ground`). */ dem?: {grid: Float32Array; lo: number; hi: number}; used: number; cancel(): void; /** A failed load: how many loads of this tile have failed, and when it is requested again. */ tries?: number; retryAt?: number; /** Built, and waiting for its turn to be uploaded: it is not canceled when it leaves the view. */ built?: boolean; /** Shown, but built from data that has since changed. */ stale?: boolean; rebuilding?: boolean; /** The tile worker that loaded the tile. */ backend?: number; /** When the tile arrived (`performance.now()`): a raster tile fades in from then (see `fadeIn`). */ at?: number; /** The rules of the style that the tile was built for (see `sourceSignature`). */ rules?: string; /** When the tile is out of date (`Date.now()`, see `expire`), and how many loads in a row came back out of date. */ expires?: number; late?: number; /** The last reload of the expired tile failed: the next failures in a row fire no `error` (#2072). */ reloadFailed?: boolean; /** The data of its source changed (`newData`): its next rebuild reports a `tileLoaded`, as a reload in MapLibre GL JS fires `sourcedata` (#2051). */ reload?: boolean; /** The `ETag` of the response of a vector tile: a reload of the expired tile with the same `ETag` (a 304) reports no `tileLoaded`, as in MapLibre GL JS (#2136). */ etag?: string; /** A tile that the engine requested for its overview and that no view has needed: its loads report no `tileLoaded`, as MapLibre GL JS does not load it (#2135). */ quiet?: boolean }
 /**
  * A label that is shown or fading. `drawn` is the copy of `placed` that the frames move with the map; it is made once
  * for each placement and changed in place in each frame, so that a frame makes no new object for a label (#692).
@@ -180,6 +180,8 @@ interface LabelState { placed: Placed; opacity: number; target: number; drawn?: 
 const raf: (cb: (t: number) => void) => unknown = globalThis.requestAnimationFrame
     ? cb => globalThis.requestAnimationFrame(cb) : cb => setTimeout(() => cb(performance.now()), 16);
 const MAX_TILES = 160;
+/** The keys of feature state whose change a source remembers, for the tiles that are built for them later (see `rebuildState`). */
+const STATE_LOG = 256;
 /** How long the zoom must be still before new contour tiles are made, in milliseconds. */
 const CONTOUR_WAIT = 250;
 /** At most this many tiles of each source are requested early for one movement (#361). */
@@ -197,6 +199,14 @@ const ZOOMING_PLACE_INTERVAL = 100, ZOOMING_FADE = 100;
  * are placed in the next frame, as in MapLibre GL JS, so that the labels of a tile that has just arrived do not hold
  * up `idle` (#371); the time between two placements is still at least the cost of one.
  */
+/**
+ * Says whether the camera has stopped, for the placement of the labels: no animation runs, the camera did not change in
+ * this frame, no drag holds the map, and the camera has been still for `still` ms, at least STOP_WAIT. The wait keeps a
+ * gesture whose events come less often than the frames (a pinch or a trackpad on a busy page, a page that moves the
+ * camera in every other frame) from placing the labels in each frame between two events (#122).
+ */
+export const cameraStopped = (animating: boolean, cameraChanged: boolean, held: boolean, still: number) => !animating && !cameraChanged && !held && still >= STOP_WAIT;
+const STOP_WAIT = 50;
 export const placeDue = (now: number, last: number, cost: number, zooming: boolean, moving: boolean, rest = false) =>
     now - last >= (rest ? cost : Math.max(zooming ? ZOOMING_PLACE_INTERVAL : PLACE_INTERVAL, moving ? 3 * cost : 0));
 /**
@@ -524,8 +534,7 @@ export class Engine {
      * so the reach follows the current paint and data (#2269).
      */
     private most = new WeakMap<GLTile, Record<string, number[]>>();
-    private sized(tile: TileGL, gl: GLTile) {
-        const r: Record<string, number[]> = {};
+    private sized(tile: TileGL, gl: GLTile, r: Record<string, number[]> = {}) {
         for (const [k, b] of Object.entries(tile.layers)) {
             const m = r[k.split('\0')[0]] ??= [0, 0, 0];
             if (b.type === 'line') b.most?.forEach((v, i) => m[i] = Math.max(m[i], v));
@@ -691,6 +700,8 @@ export class Engine {
     private setStyle(style: ResolvedStyle, reload: boolean, data?: Record<string, unknown>, instant?: boolean) {
         // (A new style can have an image that the style before did not have: the engine asks the page again, #628.)
         if (reload) this.missing.clear();
+        // (The record of the changes of feature state of a source goes with the source.)
+        for (const id of this.stateLog.keys()) if (!style.sources[id]) { this.stateLog.delete(id); this.stateParts.delete(id); }
         // A source that the new style removes or replaces drops its values of setSourceTileLodParams, as in MapLibre GL JS (#1059).
         for (const id in this.lod) if (this.style?.sources[id] && JSON.stringify(style.sources[id]) !== JSON.stringify(this.style.sources[id])) delete this.lod[id];
         // `encoding: 'custom'` of a `raster-dem` source (#590): the factors and the shift come from the style or from a
@@ -1093,7 +1104,19 @@ export class Engine {
                 mergeFeatureState(this.states.f, c.source, c.states, c.replace);
                 // The tile workers keep the state for a layer that reads it later. Tiles are built again only when a
                 // layer of the source reads feature state now. (A frame comes in each case: it reports `idle` to the page.)
-                if (this.sourceSigs.get(c.source)?.[1].includes('"feature-state"')) for (const [key, t] of this.tiles) if (key.startsWith(c.source + '|')) { t.stale = true; t.rev = ++this.tilesVersion; }
+                if (this.sourceSigs.get(c.source)?.[1].includes('"feature-state"')) {
+                    // Where each layer that reads the state is a fill, a line, a circle, a heatmap or a fill extrusion, only
+                    // these layers are built again, and only in the tiles that have a changed feature (`rebuildState`):
+                    // a pointer over the map changes the state of a feature in each frame, and building every layer of
+                    // every tile of the source for it took tens of milliseconds. The log has the keys that changed.
+                    const partial = this.stateLayers(c.source), log = this.stateLog.get(c.source) ?? {count: 0, keys: []};
+                    this.stateLog.set(c.source, log);
+                    // (A change that replaces every state, or of very many features, is not listed: each tile is then built.)
+                    const keys = Object.keys(c.states);
+                    if (c.replace || keys.length > STATE_LOG) log.keys = []; else log.keys = [...log.keys, ...keys].slice(-STATE_LOG);
+                    log.count += c.replace ? keys.length + STATE_LOG + 1 : keys.length;
+                    for (const [key, t] of this.tiles) if (key.startsWith(c.source + '|')) { if (partial) t.stateStale = true; else t.stale = true; t.rev = ++this.tilesVersion; }
+                }
                 break;
             case 'queryRendered':
             case 'query':
@@ -1357,7 +1380,8 @@ export class Engine {
         // tiles that are out of date a moment later, and slow devices cannot keep up. The lines of the last zoom stay
         // on the map (they are scaled) until the zoom has been still for a moment.
         if (src.contour && this.frameTime - this.zoomMovedAt < CONTOUR_WAIT) { this.contourWait = true; return; }
-        const t: TileState = {state: 'loading', used: this.frameNo, tries, cancel() {}};
+        // (The tile is built with the feature state of this moment: a later change builds the layers that read it again.)
+        const t: TileState = {state: 'loading', used: this.frameNo, tries, cancel() {}, stateSeen: this.stateLog.get(source)?.count ?? 0};
         this.tiles.set(key, t);
         this.tapTile(key, 'req');
         t.rev = ++this.tilesVersion;
@@ -1431,9 +1455,9 @@ export class Engine {
      * the labels of the layers that show near the zoom of the map only (as in MapLibre GL JS), and is built again when
      * the map comes to another whole zoom. (A city has thousands of labels that show only from zoom 17.)
      */
-    private build(req: number, source: string, id: TileID, t: TileState): TileRequest {
-        const src = this.style.sources[source], band = t.band = this.buildZoom(source, id);
-        t.rules = this.sourceSigs.get(source)?.[1];
+    private build(req: number, source: string, id: TileID, t: TileState, /** A build of some layers for the zoom that the tile has (see `rebuildState`). */ same?: boolean): TileRequest {
+        const src = this.style.sources[source], band = same ? t.band! : t.band = this.buildZoom(source, id);
+        if (!same) t.rules = this.sourceSigs.get(source)?.[1];
         // (A map that can show the globe cuts the fills and lines of a tile along a grid: see subdivide.ts.)
         return {id: req, source, url: tileURL(src, id.z, id.x, id.y, this.dpr), at: [id.z, id.x, id.y], z: this.zoomBuilt.has(source) ? band : id.z, overscaled: band >= src.maxzoom && band, direct: true, globe: this.globeWait || this.tr?.globeStops ? globeBuild(id, Math.max(id.z, band)) : undefined};
     }
@@ -1475,9 +1499,70 @@ export class Engine {
         // A tile whose response said when it is out of date (`Cache-Control`, `Expires`) is requested again then, while the
         // view needs it, as in MapLibre GL JS (#687). The old tile stays on screen until the new one is there.
         if (t.expires && t.state === 'ok' && !t.rebuilding) { if (Date.now() >= t.expires) return this.rebuild(source, id, key, t, true); this.wake(t.expires); }
-        if (t.band === undefined || t.state !== 'ok' || t.rebuilding || !t.stale && (t.band === this.buildZoom(source, id) || (this.contourWait ||= this.frameTime - this.zoomMovedAt <= CONTOUR_WAIT))) return;
-        t.stale = false;
+        if (t.band === undefined || t.state !== 'ok' || t.rebuilding) return;
+        // (A tile that is not built again in full gets the layers that read feature state, when that changed.)
+        if (!t.stale && (t.band === this.buildZoom(source, id) || (this.contourWait ||= this.frameTime - this.zoomMovedAt <= CONTOUR_WAIT))) return void (t.stateStale && this.rebuildState(source, id, key, t));
+        t.stale = t.stateStale = false;
+        t.stateSeen = this.stateLog.get(source)?.count ?? 0;
         this.rebuild(source, id, key, t);
+    }
+
+    /**
+     * The layers of a source that read feature state, when each of them is drawn from buffers of its own (a fill, a line,
+     * a circle, a heatmap or a fill extrusion), so that they can be built again alone. With a symbol layer among them
+     * (its labels are placed with those of the other layers) the answer is null, and the tiles are built in full.
+     */
+    private stateLayers(source: string): string[] | null {
+        const sig = this.sourceSigs.get(source);
+        let known = this.stateParts.get(source);
+        if (!known || known.sig !== sig) {
+            const reads = this.style.layers.filter(l => l.source === source && JSON.stringify(l).includes('"feature-state"'));
+            this.stateParts.set(source, known = {sig, ids: reads.every(l => /^(fill|line|circle|heatmap|fill-extrusion)$/.test(l.type)) ? reads.map(l => l.id) : null});
+        }
+        return known.ids;
+    }
+    private stateParts = new Map<string, {sig: unknown; ids: string[] | null}>();
+    /** For each source, how many keys of feature state have changed, and the last of them (see `STATE_LOG`). */
+    private stateLog = new Map<string, {count: number; keys: string[]}>();
+
+    /**
+     * Builds the layers of a tile that read feature state again, in place of all its layers, and puts their buffers in
+     * place of the old ones. The tile worker gets the keys that changed since the tile had them, when the log still has
+     * them, and builds nothing for a tile with none of these features.
+     */
+    private rebuildState(source: string, id: TileID, key: string, t: TileState) {
+        const layers = this.stateLayers(source), log = this.stateLog.get(source);
+        // (The style changed since the state did, and a symbol layer reads it now: the tile is built in full in the next frame.)
+        if (!layers || !log) { t.stateStale = false; t.stale = true; return this.repaint(); }
+        const first = log.count - log.keys.length, seen = t.stateSeen, upTo = log.count;
+        const backend = this.backends[t.backend ?? this.nextBackend++ % this.backends.length];
+        t.stateStale = false;
+        t.rebuilding = true;
+        this.tapTile(key, 'rebuild');
+        backend.load({...this.build(this.nextReq++, source, id, t, true), again: true, state: {layers, changed: seen !== undefined && seen >= first ? log.keys.slice(seen - first) : undefined}}).then(tile => {
+            t.rebuilding = false;
+            if (this.tiles.get(key) !== t || !t.gl) return;
+            t.stateSeen = upTo;
+            // (A tile that became stale meanwhile, with new data or another style, is built in full: its old buffers are
+            // not mixed with buffers of the new data.)
+            if (!tile.same && !t.stale) {
+                const most = this.most.get(t.gl) ?? {};
+                for (const l of layers) delete most[l];
+                this.renderer.replaceBatches(t.gl, layers, tile);
+                this.sized(tile, t.gl, most);
+                t.rev = ++this.tilesVersion;
+            }
+            // (The labels of the tile are those that it had: a frame draws the new buffers, and nothing is placed again.)
+            this.repaint();
+        }, () => {
+            t.rebuilding = false;
+            // The build failed (the worker has the bytes of the tile no more, and the request for them failed): the tile
+            // is built in full, which reports its failure as any build of a tile does.
+            if (this.tiles.get(key) !== t) return;
+            t.stateSeen = undefined;
+            t.stale = true;
+            this.repaint();
+        });
     }
 
     /** With `fresh`, the tile is fetched again (it has expired); an image tile is only ever fetched again. */
@@ -1513,6 +1598,7 @@ export class Engine {
             this.invalidate();
         }, err => {
             t.rebuilding = false;
+            t.stateSeen = undefined; // (the tile that stays was built before: which states it has is not known)
             // A failed reload of an expired tile fires one `error`, with its source, as in MapLibre GL JS 6.17. The
             // reloads after it (1 s, 2 s, 4 s and so on, see `expire`) fire none until one succeeds (#2072).
             if (fresh) { this.expire(t, 0); if (t.reloadFailed) return; t.reloadFailed = true; }
@@ -1790,8 +1876,8 @@ export class Engine {
                 if (t) t.quiet = false;
                 // (A tile that is drawn from old data, or that is being built again, is not complete: `idle` waits for it.
                 // Only a tile of geometry is built again; see `refresh`.)
-                if (!t || t.state === 'loading' && !background(t) || t.retryAt && t.tries! < TILE_RETRIES || t.rebuilding || t.stale && t.state === 'ok' && t.band !== undefined) complete = false;
-                if (!t || t.state === 'loading' && !background(t) || t.stale || t.rebuilding) loading.add(source);
+                if (!t || t.state === 'loading' && !background(t) || t.retryAt && t.tries! < TILE_RETRIES || t.rebuilding || (t.stale || t.stateStale) && t.state === 'ok' && t.band !== undefined) complete = false;
+                if (!t || t.state === 'loading' && !background(t) || t.stale || t.stateStale || t.rebuilding) loading.add(source);
                 // The server does not have this image tile: the nearest tile above it that the server has is drawn in its
                 // place (as in MapLibre GL JS, at most 10 levels above). One level is requested at a time.
                 for (let m = t, z = id.z, x = id.x, y = id.y; m?.missing && z > src.minzoom && z > id.z - 10;) {
@@ -1849,11 +1935,12 @@ export class Engine {
                 const t = this.tiles.get(source + '|' + k);
                 if (t?.state !== 'ok' || t.missing) return undefined;
                 t.used = frameNo;
-                if (t.stale && !t.rebuilding) {
-                    // A tile of another zoom level standing in for a missing one: bring its data up to date as well.
-                    const [z, x, y] = k.split('/').map(Number);
-                    t.stale = false;
-                    this.rebuild(source, {z, x, y, w: 0, key: k}, source + '|' + k, t);
+                if ((t.stale || t.stateStale) && !t.rebuilding) {
+                    // A tile of another zoom level standing in for a missing one: bring its data up to date as well, in
+                    // full, or the layers that read feature state when only that changed.
+                    const [z, x, y] = k.split('/').map(Number), id = {z, x, y, w: 0, key: k};
+                    if (t.stale) { t.stale = t.stateStale = false; t.stateSeen = this.stateLog.get(source)?.count ?? 0; this.rebuild(source, id, source + '|' + k, t); }
+                    else this.rebuildState(source, id, source + '|' + k, t);
                 }
                 return t.gl;
             };
@@ -1901,7 +1988,11 @@ export class Engine {
         // At rest (and before the first `idle`), place in this frame and show the labels of new tiles at once, as
         // MapLibre GL JS does with `skipFade` (#371). A moving map keeps the interval and the fade.
         const rest = !this.wentIdle || (!animating && !cameraChanged && began - this.cameraMovedAt >= 200);
-        const place = this.placeDirty && placeDue(now, this.lastPlace, this.placeCost, zooming, cameraChanged, rest);
+        // The camera has stopped: the labels are placed now and not when the interval has passed, so that `idle` comes a
+        // quarter of a second after the stop. (With the interval, the placement came up to 250 ms after the stop, and
+        // `idle` 200 ms after that, when its labels had faded in.)
+        const stopped = cameraStopped(animating, cameraChanged, !!this.grab, began - this.cameraMovedAt);
+        const place = this.placeDirty && placeDue(now, this.lastPlace, this.placeCost, zooming, cameraChanged, rest || stopped);
         if (place) this.fade = zooming ? ZOOMING_FADE : FADE;
         const grid = place ? new CollisionGrid() : null;
         if (place) {

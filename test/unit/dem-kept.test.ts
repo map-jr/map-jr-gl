@@ -11,7 +11,7 @@ test('an elevation tile with heights counts as built while its upload is on its 
     const backend = {loadElevation: () => new Promise(r => { answer = r; }), cancel() {}};
     const e = Object.assign(Object.create(Engine.prototype), {
         renderer: {createImageTile: () => ({labels: {}, batches: {}}), destroyTile() {}}, backends: [backend], tiles: new Map(), uploads: [],
-        nextBackend: 0, nextReq: 0, tilesVersion: 0, freshTiles: new Map(), frameNo: 1, frameTime: 0, zoomMovedAt: -1e9, sourceSigs: new Map(),
+        nextBackend: 0, nextReq: 0, tilesVersion: 0, freshTiles: new Map(), frameNo: 1, frameTime: 0, zoomMovedAt: -1e9, sourceSigs: new Map(), stateLog: new Map(),
         zoomBuilt: new Set(), tap: false,
         style: {sources: {dem: {type: 'raster-dem', tiles: ['https://tiles.test/{z}/{x}/{y}.png'], maxzoom: 14}}, terrain: {source: 'dem'}},
         repaint() {}, invalidate() {}, emit() {}, ground: (key: string) => grounded.push(key),

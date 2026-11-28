@@ -1,7 +1,7 @@
 // When the engine places the labels again (#122): a placement that takes long must not run in every frame.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {placeDue, fadeStep} from '../../src/engine.ts';
+import {placeDue, fadeStep, cameraStopped} from '../../src/engine.ts';
 
 test('placement schedule: while the camera moves, a slow placement is not repeated in every frame', () => {
     // The last placement took 400 ms. Frames come 16 ms apart, so the frame after it comes 416 ms after its start.
@@ -39,4 +39,19 @@ test('label fade: before the first idle a label shows and hides at once; after i
     // After the first idle, the fade stays: 16 ms of a 320 ms fade.
     assert.equal(fadeStep(1, 0, 16, 320, false), 0.95);
     assert.equal(fadeStep(0, 1, 16, 320, false), 0.05);
+});
+
+test('placement schedule: the camera has stopped when it has been still for 50 ms, and no animation or drag holds it', () => {
+    // 50 ms after the last change of the camera, with nothing that moves it: the labels are placed now.
+    assert.equal(cameraStopped(false, false, false, 50), true);
+    assert.equal(placeDue(66, 0, 5, false, false, cameraStopped(false, false, false, 50)), true);
+    // A frame between two events of a gesture (a pinch whose events come every 33 ms): the camera did not change in
+    // this frame, but it has not stopped, and the interval stays.
+    assert.equal(cameraStopped(false, false, false, 16), false);
+    assert.equal(cameraStopped(false, false, false, 49), false);
+    assert.equal(placeDue(66, 0, 5, false, false, cameraStopped(false, false, false, 16)), false);
+    // An animation, a change in this frame, or a held drag: not stopped, however long the camera has been still.
+    assert.equal(cameraStopped(true, false, false, 500), false);
+    assert.equal(cameraStopped(false, true, false, 500), false);
+    assert.equal(cameraStopped(false, false, true, 500), false);
 });
