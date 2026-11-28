@@ -1106,7 +1106,7 @@ for (const mode of renderers) {
         // (The point is inside buildings. The center of the frames check above is inside a polygon of class path, which only a
         // line layer draws, and a line layer finds a polygon at its rings only, #2094.)
         window.map.jumpTo({center: [-74.0065, 40.7085]});
-        await new Promise(r => window.map.once('idle', r));
+        await new Promise((r, j) => { window.map.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "querySource finds an undrawn-layer feature under a"')), 30000); });
         const c = window.map.getCenter(), at = window.map.project(c), key = f => f.layer.id + ' ' + f.id;
         const drawn = await window.map.queryFeatures(c, {radius: 0}), same = await window.map.queryRenderedFeatures([at.x, at.y]);
         const wide = await window.map.queryFeatures({x: at.x, y: at.y}, {radius: 40}), box = await window.map.queryRenderedFeatures([[at.x - 40, at.y - 40], [at.x + 40, at.y + 40]]);
@@ -1186,7 +1186,7 @@ for (const mode of renderers) {
         const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
         const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'width:300px;height:200px'}));
         const m = new mod.Map({container: el, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#123'}}]}, renderer, attributionControl: false});
-        await new Promise(r => m.once('idle', r));
+        await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "new pixels of render() do not repaint the map"')), 30000); });
         let renders = 0, frames = 0;
         await m.addImage('new-pixels', {width: 1, height: 1, data: new Uint8Array(4), render() { renders++; for (const t = performance.now(); performance.now() - t < 150;); this.data = new Uint8Array(4).fill(renders % 255); return true; }});
         m.addLayer({id: 'use', type: 'background', paint: {'background-pattern': 'new-pixels', 'background-opacity': 0}});
@@ -1206,7 +1206,7 @@ for (const mode of renderers) {
     // image: a hook on `render` would run after it.)
     if (mode === 'main') {
         const renderOrder = await page.evaluate(async () => {
-            await new Promise(r => window.map.loaded() && !window.map.isMoving() ? setTimeout(r, 300) : window.map.once('idle', r));
+            await new Promise((r, j) => { if (window.map.loaded() && !window.map.isMoving()) return setTimeout(r, 300); window.map.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "render() of an image runs before each frame"')), 30000); });
             const order = [], frame = () => order.push('F');
             window.map.on('render', frame);
             let n = 0;
@@ -1497,7 +1497,7 @@ for (const mode of renderers) {
         m.once('mouseenter', ['zones-fill'], () => window.arrayEvents.push('enter'));
         m.on('click', ['zones-fill'], gone); m.off('click', ['zones-fill'], gone);
         try { m.on('mouseenter', 42, () => {}); } catch (error) { window.arrayEvents.push(String(error.message) === '[map-jr-gl] E10278 https://map-jr.org/e/10278 type="mouseenter"' ? 'message' : error.message); }
-        await new Promise(r => m.once('idle', r));
+        await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "GeoJSON source, layer click event and"')), 30000); });
         const inside = m.project([-74.008, 40.7085]), found = await m.querySource('zones', inside);
         return {inside, found: found.map(f => f.properties.name)};
     });
@@ -1919,7 +1919,7 @@ for (const mode of renderers) {
         const onFrame = e => { if (e.kind === 'frame') { drawn.clear(); for (const k of [e.key].flat()) if (k.startsWith('omt|')) drawn.add(k.split('|')[1]); } };
         m.on('data', onData); m.on('tile', onFrame); m._tileReport(true);
         m.jumpTo({center: [-73.98, 40.75], zoom: 15});
-        await new Promise(r => m.once('idle', r));
+        await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "data events with dataType source carry e.tile for each tile that"')), 30000); });
         m._tileReport(false); m.off('data', onData); m.off('tile', onFrame);
         m.removeLayer('odd-765'); m.removeSource(odd);
         return {oddTiles, got: got.size, drawn: [...drawn], missing: [...drawn].filter(k => !got.has(k)), bad};
@@ -1966,7 +1966,7 @@ for (const mode of renderers) {
     });
     check(`[${mode}] a touch tap with no hover: a click listener reads the features of tiles at once`, tap.found > 0, JSON.stringify(tap));
     const stale = await page.evaluate(async () => {
-        const m = window.map, idle = () => new Promise(r => m.once('idle', r)), at = [-74.0065, 40.7085];
+        const m = window.map, idle = () => new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "queryRenderedFeatures: the array is not the answer from before"')), 30000); }), at = [-74.0065, 40.7085];
         m.jumpTo({center: at, zoom: 14});
         m.addSource('stale', {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'Point', coordinates: at}}});
         m.addLayer({id: 'stale-dot', type: 'circle', source: 'stale', paint: {'circle-radius': 8}});
@@ -2250,7 +2250,7 @@ for (const mode of renderers) {
             const popup = new mod.Popup().setText('a'), marker = new mod.Marker().setLngLat([0, 0]).setPopup(popup).addTo(m);
             await new Promise(r => m.once('load', r));
             m.jumpTo({center: [1, 1], zoom: 2}); marker.togglePopup(); marker.togglePopup(); marker.setLngLat([1, 1]);
-            await new Promise(r => m.once('idle', r));
+            await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "the development build warns once for each member of MapLibre GL JS"')), 30000); });
             // (Only the warnings about members, which name the entry: a browser with no WebGL2 adds a warning about the renderer.)
             const member = w => w.includes('in @map-jr/map-jr-gl/maplibre-compat'), usual = warns.filter(member);
             for (let i = 0; i < 2; i++) { void attribution.styleOwner; void scale.setUnit; void m.transform; void m.cameraHelper; void m.then; void m.$$typeof; void m.__v_skip; void m.toJSON; }
@@ -2333,9 +2333,9 @@ for (const mode of renderers) {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:400px;height:300px'}));
             const first = how === 'options' ? style({p: source()}) : how === 'buffer 16' ? style({p: source(16)}) : style({}, false);
             const m = new mod.Map({container: el, style: first, center: [0, 0], zoom: 1, attributionControl: false, renderer: mode});
-            await new Promise(r => m.once('idle', r));
-            if (how === 'setStyle') { m.setStyle(style({p: source()})); await new Promise(r => m.once('idle', r)); }
-            if (how === 'addSource') { m.addSource('p', source()); m.addLayer({id: 'l', type: 'line', source: 'p', paint: {'line-width': 120, 'line-color': '#f00'}}); await new Promise(r => m.once('idle', r)); }
+            await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "a GeoJSON source without buffer keeps 128 pixels past the tile edge"')), 30000); });
+            if (how === 'setStyle') { m.setStyle(style({p: source()})); await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "a GeoJSON source without buffer keeps 128 pixels past the tile edge"')), 30000); }); }
+            if (how === 'addSource') { m.addSource('p', source()); m.addLayer({id: 'l', type: 'line', source: 'p', paint: {'line-width': 120, 'line-color': '#f00'}}); await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "a GeoJSON source without buffer keeps 128 pixels past the tile edge"')), 30000); }); }
             out[how] = await red(m);
             m.remove(); el.remove();
         }
@@ -2492,7 +2492,7 @@ for (const mode of renderers) {
         m.addSource('s', {type: 'geojson', data: {type: 'Feature', id: 1, properties: {r: 170}, geometry: {type: 'Point', coordinates: [pt.lng, pt.lat]}}});
         m.addLayer({id: 'zoom', type: 'circle', source: 's', paint: {'circle-radius': ['interpolate', ['linear'], ['zoom'], 0, 170, 24, 170]}});
         m.addLayer({id: 'const', type: 'circle', source: 's', paint: {'circle-radius': 170}});
-        await new Promise(r => m.once('idle', r));
+        await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "querySourceFeatures finds the features of a source while the layers of"')), 30000); });
         const out = {};
         for (const pitch of [0, 45]) {
             m.jumpTo({pitch});
@@ -2525,7 +2525,7 @@ for (const mode of renderers) {
         m.addSource('p', {type: 'geojson', promoteId: 'key', data: {type: 'Feature', properties: {key: 'a'}, geometry: {type: 'Point', coordinates: [pt.lng, pt.lat]}}});
         m.addLayer({id: 'state', type: 'circle', source: 'p', paint: {'circle-radius': ['coalesce', ['feature-state', 'r'], 5]}});
         m.setFeatureState({source: 'p', id: 'a'}, {r: 700});
-        await new Promise(r => m.once('idle', r));
+        await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "queryRenderedFeatures: a circle of 700 pixels from the data whose"')), 30000); });
         const out = {};
         for (const pitch of [0, 45]) {
             m.jumpTo({pitch});
@@ -2552,7 +2552,7 @@ for (const mode of renderers) {
         m.addLayer({id: 'width', type: 'line', source: 's', paint: {'line-width': ['get', 'w']}});
         m.addLayer({id: 'gap', type: 'line', source: 's', paint: {'line-width': 2, 'line-gap-width': ['get', 'g']}});
         m.addLayer({id: 'offset', type: 'line', source: 's', paint: {'line-width': 40, 'line-offset': ['get', 'o']}});
-        await new Promise(r => m.once('idle', r));
+        await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "queryRenderedFeatures: a line whose width, gap or offset from the data"')), 30000); });
         const out = {};
         for (const pitch of [0, 45]) {
             m.jumpTo({pitch});
@@ -2579,7 +2579,7 @@ for (const mode of renderers) {
         const b = m.project([0, 0]), pt = m.unproject([b.x + 600, b.y + 100]), small = ['*', 0.01, ['get', 'r']];
         m.addSource('s', {type: 'geojson', data: {type: 'Feature', properties: {r: 700}, geometry: {type: 'Point', coordinates: [pt.lng, pt.lat]}}});
         m.addLayer({id: 'c', type: 'circle', source: 's', paint: {'circle-radius': small}});
-        const idle = () => new Promise(r => m.once('idle', r)), c = m.project([0, 0]), q = [c.x - 15, c.y + 100], out = {main: m.renderer === 'main'};
+        const idle = () => new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "queryRenderedFeatures: the reach of a circle whose size comes from the"')), 30000); }), c = m.project([0, 0]), q = [c.x - 15, c.y + 100], out = {main: m.renderer === 'main'};
         const ask = async k => { await idle(); n = 0; out[k] = [(await m.queryRenderedFeatures(q)).length, n]; };
         await ask('small');
         m.setPaintProperty('c', 'circle-radius', ['get', 'r']); await ask('large');
@@ -2603,7 +2603,7 @@ for (const mode of renderers) {
         const features = Array.from({length: 10}, (_, i) => ({type: 'Feature', properties: {i}, geometry: {type: 'Point', coordinates: [i * 0.005, Math.sin(i) * 0.02]}}));
         const m = new mod.Map({container: el, renderer, attributionControl: false, center: [0, 0], zoom: 3, pitch: 60, style: {version: 8,
             sources: {s: {type: 'geojson', data: {type: 'FeatureCollection', features}}}, layers: [{id: 'huge', type: 'circle', source: 's', paint: {'circle-radius': 100000}}]}});
-        await new Promise(r => m.once('idle', r));
+        await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "queryRenderedFeatures: a circle-radius of 100000 on a map with pitch"')), 30000); });
         const c = m.project([0, 0]), out = {};
         out.point = {now: m.queryRenderedFeatures([c.x, c.y]).length, later: (await m.queryRenderedFeatures([c.x, c.y])).length};
         out.box = {now: m.queryRenderedFeatures([[0, 0], [400, 300]]).length, later: (await m.queryRenderedFeatures([[0, 0], [400, 300]])).length};
@@ -2686,7 +2686,7 @@ for (const mode of renderers) {
             const coordinates = [[-20, 0], [20, 0]];
             const m = new mod.Map({container: el, center: [0, 0], zoom: 2, attributionControl: false, style: {version: 8, sources: {l: {type: 'geojson', data: {type: 'Feature', properties: {}, geometry: {type: 'LineString', coordinates}}}},
                 layers: [{id: 'gap', type: 'line', source: 'l', paint: {'line-gap-width': 4}}]}});
-            await new Promise(r => m.once('idle', r));
+            await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "maplibre-compat: a line without line-width is queried with the width"')), 30000); });
             const p = m.project([0, 0]), hit = async dy => (await m.queryRenderedFeatures([p.x, p.y + dy], {layers: ['gap']})).length > 0;
             const out = {at2: await hit(2), at4_5: await hit(4.5)};
             m.remove(); el.remove();
@@ -2734,7 +2734,7 @@ for (const mode of renderers) {
                     {id: 'line', type: 'line', source: 'l', paint: {'line-width': 4, 'line-translate': [60, 0]}},
                     {id: 'extrusion', type: 'fill-extrusion', source: 'a', paint: {'fill-extrusion-translate': [0, 60], 'fill-extrusion-translate-anchor': 'viewport'}},
                 ]}});
-            await new Promise(r => m.once('idle', r));
+            await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "queryRenderedFeatures: a fill, line and fill extrusion with"')), 30000); });
             // (MapLibre GL JS gives a feature without an id once per tile: the check compares the names of the layers.)
             const p = m.project([0, 0]), ids = fs => [...new Set([...fs].map(f => f.layer.id))].sort().join();
             const out = {};
@@ -2771,7 +2771,7 @@ for (const mode of renderers) {
             const m = new mod.Map({container: el, renderer: mode, center: [0, 66.5], zoom: 1, attributionControl: false, fadeDuration: 0, style: {version: 8,
                 sources: {v: {type: 'vector', tiles: [`${scheme}://{z}/{x}/{y}`], minzoom: 1, maxzoom: 1}},
                 layers: [{id: 'edge', type: 'line', source: 'v', 'source-layer': 'a', paint: {'line-width': 4}}]}});
-            await new Promise(r => m.once('idle', r));
+            await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "queryRenderedFeatures: a vector line without id over a tile edge is"')), 30000); });
             const p = m.project([0, 66.51]), both = [[p.x - 60, p.y - 10], [p.x + 60, p.y + 10]], one = [[p.x - 60, p.y - 10], [p.x - 20, p.y + 10]];
             const out = {both: (await m.queryRenderedFeatures(both)).length, one: (await m.queryRenderedFeatures(one)).length,
                 bothNow: [...m.queryRenderedFeatures(both)].length, oneNow: [...m.queryRenderedFeatures(one)].length};
@@ -2799,7 +2799,7 @@ for (const mode of renderers) {
                     {id: 'circle', type: 'circle', source: 'p', paint: {'circle-radius': 5, 'circle-translate': ['interpolate', ['linear'], ['zoom'], 0, ['literal', [0, 0]], 4, ['literal', [120, 0]]]}},
                     {id: 'line', type: 'line', source: 'l', paint: {'line-width': 4, 'line-translate': {stops: [[0, [0, 0]], [4, [0, 120]]]}}},
                 ]}});
-            await new Promise(r => m.once('idle', r));
+            await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "queryRenderedFeatures: a circle-translate and a line-translate that"')), 30000); });
             const p = m.project([0, 0]), ids = fs => [...new Set([...fs].map(f => f.layer.id))].sort().join();
             const out = {};
             for (const [name, pt] of Object.entries({right: [p.x + 60, p.y], down: [p.x, p.y + 60], at: [p.x, p.y]})) {
@@ -2829,7 +2829,7 @@ for (const mode of renderers) {
                     {id: 'down', type: 'line', source: 'l', paint: {'line-width': 4, 'line-offset': 20}},
                     {id: 'up', type: 'line', source: 'l', paint: {'line-width': 4, 'line-offset': ['get', 'o']}},
                 ]}});
-            await new Promise(r => m.once('idle', r));
+            await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "queryRenderedFeatures: a line with line-offset, also from a property"')), 30000); });
             const p = m.project([0, 0]), ids = fs => [...new Set([...fs].map(f => f.layer.id))].sort().join();
             const out = {};
             for (const [name, pt] of Object.entries({down: [p.x, p.y + 20], up: [p.x, p.y - 20], at: [p.x, p.y]})) {
@@ -2859,7 +2859,7 @@ for (const mode of renderers) {
                     {id: 'ring', type: 'line', source: 'p', paint: {'line-width': 4}},
                     {id: 'off', type: 'line', source: 'p', paint: {'line-width': 4, 'line-offset': 15}},
                 ]}});
-            await new Promise(r => m.once('idle', r));
+            await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "queryRenderedFeatures: a line layer over a polygon finds the ring and"')), 30000); });
             const e = m.project([20, 10]), c = m.project([10, 10]), only = (pt, id) => [...new Set([...m.queryRenderedFeatures(pt, {layers: [id]})].map(f => f.layer.id))].join();
             const out = {};
             for (const id of ['ring', 'off']) for (const [name, pt] of Object.entries({inside: [c.x, c.y], edge: [e.x, e.y], west: [e.x - 15, e.y], east: [e.x + 15, e.y]})) {
@@ -3757,7 +3757,7 @@ for (const mode of renderers) {
             m.refreshTiles('v');
             // Asked at once, while the new tile loads, and again when it is on the map.
             const during = await counts();
-            if (!m.areTilesLoaded()) await new Promise(r => m.once('idle', r));
+            if (!m.areTilesLoaded()) await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "with four tile workers, queries after refreshTiles see the new tile"')), 30000); });
             const requestsLoaded = requests, after = await counts();
             m.remove(); el.remove(); mod.removeProtocol('fresh');
             return {before, during, after, requestsBefore, requestsForQueries: requests - requestsLoaded};
@@ -4839,7 +4839,7 @@ for (const mode of renderers) {
                 const el = document.body.appendChild(Object.assign(document.createElement('div'), {id, style: `position:fixed;left:${i * 220}px;top:0;width:200px;height:150px;z-index:1000`}));
                 return new mod.Map({container: el, style: style(), renderer: mode, attributionControl: false, center: [0, 0], zoom: 1});
             });
-            await Promise.all(window.pair.map(m => new Promise(r => m.once('idle', r))));
+            await Promise.all(window.pair.map(m => new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "two maps with the same source name keep their own feature state and"')), 30000); })));
             const [a, b] = window.pair, idle = m => new Promise(r => { m.once('idle', r); setTimeout(r, 4000); });
             b.setFeatureState({source: 'g', id: 1}, {on: true});
             b.setGlobalStateProperty('tone', '#00ff00');
@@ -6314,7 +6314,7 @@ for (const mode of renderers) {
                 try {
                     await new Promise(r => m.once('load', r));
                     m.addLayer(layer);
-                    await new Promise(r => m.once('idle', r)); m.triggerRepaint(); await wait(300);
+                    await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "maplibre-compat: on the globe a"')), 30000); }); m.triggerRepaint(); await wait(300);
                     out[height] = {pixel, error};
                 } finally { m.remove(); el.remove(); }
             }
@@ -6402,7 +6402,7 @@ for (const mode of renderers) {
                     terrain: {source: 'dem'}, layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'c', type: 'circle', source: 'p', paint: {'circle-color': '#f00', 'circle-radius': 20}}]};
                 const map = new mod.Map({container: el, style, center: [0, 0], bearing: 90, ...view, renderer, attributionControl: false});
                 try {
-                    await new Promise(r => map.once('idle', r));
+                    await new Promise((r, j) => { map.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "3D terrain: a circle behind a ridge is hidden, and a circle in front"')), 30000); });
                     // Read when the ridge has its height (and for the circle in front, when the circle is drawn), for up to 10 s.
                     let n = 0;
                     for (let t = 0; t < 50; t++) {
@@ -6433,7 +6433,7 @@ for (const mode of renderers) {
                 layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'c', type: 'circle', source: 'p', paint: {'circle-color': '#f00', 'circle-radius': 15}}]};
             const map = new mod.Map({container: el, style, center: [0, 0], zoom: 11.6, pitch: 60, bearing: 90, renderer, attributionControl: false});
             try {
-                await new Promise(r => map.once('idle', r));
+                await new Promise((r, j) => { map.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "the globe with 3D terrain: project() gives the place where a circle is"')), 30000); });
                 // (The check waits for the circle itself, for up to 10 s: on a slow machine the frame with it can come later.)
                 let n = 0, sx = 0, sy = 0;
                 for (let t = 0; t < 50 && n < 100; t++) {
@@ -6462,7 +6462,7 @@ for (const mode of renderers) {
                     ...(terrain ? {terrain: {source: 'dem'}} : {}), layers: [{id: 'bg', type: 'background', paint: {'background-color': '#f00'}}]};
                 const map = new mod.Map({container: el, style, center: [0, 80], zoom: 1.5, pitch: 30, renderer, attributionControl: false});
                 try {
-                    await new Promise(r => map.once('idle', r));
+                    await new Promise((r, j) => { map.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "the globe with 3D terrain: the area at the pole is drawn"')), 30000); });
                     const d = await shot(map, 500, 400);
                     let n = 0;
                     for (let i = 0; i < d.length; i += 4) if (d[i] > 200 && d[i + 1] < 80 && d[i + 3] > 200) n++;
@@ -6490,7 +6490,7 @@ for (const mode of renderers) {
                         {id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f', 'fill-antialias': false, 'fill-translate': [0, 100], 'fill-translate-anchor': 'viewport'}}]};
                 const map = new mod.Map({container: el, style, center: [0, 8], zoom: 2.4, bearing: 45, pitch: 30, renderer, attributionControl: false, fadeDuration: 0});
                 try {
-                    await new Promise(r => map.once('idle', r));
+                    await new Promise((r, j) => { map.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "3D terrain: fill-translate across a tile edge draws as without"')), 30000); });
                     const d = await shot(map, 500, 400);
                     let n = 0, sx = 0, sy = 0;
                     for (let i = 0; i < d.length; i += 4) if (d[i + 2] > 200 && d[i] < 60 && d[i + 1] < 60) { n++; sx += (i / 4) % 500; sy += Math.floor(i / 4 / 500); }
@@ -6516,7 +6516,7 @@ for (const mode of renderers) {
                         layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}}, {id: 'c', type: 'circle', source: 'p', paint: {'circle-color': '#f00', 'circle-radius': 20, 'circle-pitch-alignment': align}}]};
                     const map = new mod.Map({container: el, style, center: [0, 0], zoom: 13, pitch: 70, renderer, attributionControl: false, fadeDuration: 0});
                     try {
-                        await new Promise(r => map.once('idle', r));
+                        await new Promise((r, j) => { map.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "a tilted map: queryRenderedFeatures finds a circle at its drawn edge"')), 30000); });
                         const p = map.project([0, 0.02]), cx = Math.round(p.x), cy = Math.round(p.y);
                         // The drawn half width and half height of the circle, waited for (up to 10 s).
                         let rx = 0, ry = 0;
@@ -6552,7 +6552,7 @@ for (const mode of renderers) {
                         layers: [{id: 'c', type: 'circle', source: 'p', paint: {'circle-radius': 20, 'circle-pitch-alignment': align}}]};
                     const map = new mod.Map({container: el, style, center: [0, 0], zoom: 13, pitch, maxPitch: 85, renderer, attributionControl: false, fadeDuration: 0});
                     try {
-                        await new Promise(r => map.once('idle', r));
+                        await new Promise((r, j) => { map.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "a steep map: a circle query with a box in the sky returns no circle"')), 30000); });
                         const ids = async q => { const now = q(); const f = await now; return [now.map(f => f.id).sort().join(), f.map(f => f.id).sort().join()]; };
                         const p = map.project([0, 0]);
                         out[align + pitch] = {sky: await ids(() => map.queryRenderedFeatures([[0, 0], [600, 40]], {layers: ['c']})),
@@ -6835,7 +6835,7 @@ for (const mode of renderers) {
                 m.setPaintProperty('c', 'circle-blur', ['case', ['has', 'a'], curve, curve]);
                 m.setPaintProperty('c', 'circle-stroke-width', curve);
                 m.setPaintProperty('c', 'circle-color', 'red');
-                await new Promise(r => m.once('idle', r));
+                await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "maplibre-compat: the development build fires error with the text of"')), 30000); });
                 out[file] = {errors, radius: m.getPaintProperty('c', 'circle-radius')?.[0]};
                 m.remove(); el.remove();
             }
@@ -6862,7 +6862,7 @@ for (const mode of renderers) {
                 await new Promise(r => m.once('load', r));
                 m.setPaintProperty('c', 'circle-opacityy', 0.5);
                 m.setPaintProperty('c', 'circle-radius', 3);
-                await new Promise(r => m.once('idle', r));
+                await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "maplibre-compat: the development build fires error with unknown"')), 30000); });
                 out[file] = errors;
                 m.remove(); el.remove();
             }
@@ -6887,7 +6887,7 @@ for (const mode of renderers) {
             for (const [id, options] of [['a', {validate: false}], ['b', {}], ['c', {validate: false, diff: false}]]) {
                 errors.length = 0;
                 m.setStyle(style(id), options);
-                await new Promise(r => m.once('idle', r));
+                await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "maplibre-compat: new Map({validateStyle: false}) skips the check of"')), 30000); });
                 out[id] = errors.filter(e => e.includes('missing required property')).length;
             }
             m.remove();
@@ -6898,7 +6898,7 @@ for (const mode of renderers) {
                 await new Promise(r => n.once('load', r));
                 errors.length = 0;
                 n.setStyle(style(id));
-                await new Promise(r => n.once('idle', r));
+                await new Promise((r, j) => { n.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "maplibre-compat: new Map({validateStyle: false}) skips the check of"')), 30000); });
                 out[id] = errors.filter(e => e.includes('missing required property')).length;
                 n.remove();
             }
@@ -7900,18 +7900,18 @@ for (const mode of renderers) {
                 m.addSource('s', {type: 'raster', tiles: ['lod://{z}/{x}/{y}'], tileSize: 256});
                 if (lod) m.setSourceTileLodParams(...lod, 's');
                 m.addLayer({id: 'r', type: 'raster', source: 's'});
-                await new Promise(r => m.once('idle', r));
+                await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "maplibre-compat: setSourceTileLodParams gives the tiles of MapLibre at"')), 30000); });
                 if (readd === 'setStyle') {
                     // #1059: setStyle replaces the source with one of the same id, which starts with the default values.
                     seen.clear();
                     m.setStyle({version: 8, sources: {s: {type: 'raster', tiles: ['lod://{z}/{x}/{y}?again'], tileSize: 256}}, layers: [{id: 'r', type: 'raster', source: 's'}]});
-                    await new Promise(r => m.once('idle', r));
+                    await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "maplibre-compat: setSourceTileLodParams gives the tiles of MapLibre at"')), 30000); });
                 } else if (readd) {
                     // #1059: a source added again with the same id starts with the default values.
                     m.removeLayer('r'); m.removeSource('s'); seen.clear();
                     m.addSource('s', {type: 'raster', tiles: ['lod://{z}/{x}/{y}?again'], tileSize: 256});
                     m.addLayer({id: 'r', type: 'raster', source: 's'});
-                    await new Promise(r => m.once('idle', r));
+                    await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "maplibre-compat: setSourceTileLodParams gives the tiles of MapLibre at"')), 30000); });
                 }
                 m.remove(); el.remove(); lib.removeProtocol('lod');
                 return leaves([...seen]);
@@ -8322,7 +8322,7 @@ for (const mode of renderers) {
                 const style = {version: 8, sources: {a: {type: 'geojson', data: point(10)}, b: {type: 'geojson', data: point(11)}},
                     layers: [{id: 'bg', type: 'background'}, {id: 'a', type: 'circle', source: 'a'}, {id: 'b', type: 'circle', source: 'b'}]};
                 const m = window.m565 = new lib.Map({container: el, renderer: 'main', style, center: [10, 45], zoom: 4, fadeDuration: 0});
-                await new Promise(r => m.once('idle', r));
+                await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "maplibre-compat: isSourceLoaded answers for one source and fires error"')), 30000); });
                 const errors = [];
                 m.on('error', e => errors.push(e.error));
                 let missing;
@@ -8330,7 +8330,7 @@ for (const mode of renderers) {
                 const out = [String(missing), errors.length, errors[0] instanceof Error, m.isSourceLoaded('a'), m.isSourceLoaded('b')];
                 m.getSource('a').setData(point(12));
                 out.push(m.isSourceLoaded('a'), m.isSourceLoaded('b'), m.getSource('a').loaded(), m.getSource('b').loaded());
-                await new Promise(r => m.once('idle', r));
+                await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "maplibre-compat: isSourceLoaded answers for one source and fires error"')), 30000); });
                 out.push(m.isSourceLoaded('a'), errors.length);
                 return out.join();
             }, name);
@@ -9318,7 +9318,7 @@ for (const mode of renderers) {
         m.on('error', e => seen.push(String(e.error?.message ?? e.error)));
         m.jumpTo({center: [7.70, 45.99], zoom: 11.2, pitch: 0, bearing: 0});
         m.addLayer({id: 'test-relief', type: 'hillshade', source: 'dem'});
-        await new Promise(r => m.once('idle', r));
+        await new Promise((r, j) => { m.once('idle', r); setTimeout(() => j(new Error('no idle within 30 s before the check "image tiles are not built again as"')), 30000); });
         m.jumpTo({zoom: 11.7});
         await new Promise(r => setTimeout(r, 1200));
         m.setPaintProperty('test-relief', 'hillshade-exaggeration', 0.3);
