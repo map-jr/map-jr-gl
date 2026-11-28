@@ -59,7 +59,7 @@ export interface RenderOptionsBase {
      */
     bearing?: number;
     /**
-     * Has no effect, because the server render draws every view flat. A value other than 0 writes a warning.
+     * The pitch of the view in degrees, from 0 to 60. A larger value is drawn at 60, the default `maxPitch` of the map.
      * @default 0
      */
     pitch?: number;
@@ -257,15 +257,11 @@ function fitBounds(bounds: LngLatBoundsInput, padding: PaddingInput | undefined,
     return fitBox(b.length > 2 ? b as number[] : [...toLngLat(b[0] as LngLatLike), ...toLngLat(b[1] as LngLatLike)], width, height, p, p, maxZoom);
 }
 
-// The warning about `pitch` is shown once per process; it holds no state of a map.
-let warnedPitch = false;
-
 /** `renderToSVG`, with the view that the SVG shows (`renderFirstView` needs it for the scale and the compass). */
 async function renderView(o: RenderOptions, rootAttrs = 'data-map-jr-ssr="" style="position:absolute;inset:0;width:100%;height:100%"'): Promise<RenderResult & {view: {lat: number; zoom: number; bearing: number}}> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
     // Without a view, the render would be at an undefined center and zoom, with no message (#1640).
     if (!o.bounds && (o.center == null || o.zoom == null)) throw new Error(`[map-jr-gl] ${o.center == null && o.zoom == null ? 'E1640 server render: the options have no "center" and no "zoom"' : o.center == null ? 'E11640 server render: the options have "zoom" but no "center"' : 'E21640 server render: the options have "center" but no "zoom"'}, and no "bounds". Pass "center" and "zoom", for example center: [-74.0065, 40.7085], zoom: 14, or pass "bounds".`);
-    if (o.pitch && !warnedPitch) { warnedPitch = true; console.warn(`[map-jr-gl] E2513 server render: the pitch is ${o.pitch}, and the server render draws the first view flat, as if the pitch were 0, until #395. The map in the browser uses the pitch. When that is intended, nothing needs to change.`); }
     // The size is written into the markup as it is: a string could add attributes, and NaN gives a size of NaN (#1668).
     for (const name of ['width', 'height'] as const) {
         const size: unknown = o[name];
@@ -308,8 +304,8 @@ async function renderView(o: RenderOptions, rootAttrs = 'data-map-jr-ssr="" styl
     const layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
     const tr = new Transform();
     tr.width = o.width; tr.height = o.height;
-    if (o.bounds) { const fit = fitBounds(o.bounds, o.padding, o.width, o.height, o.fitMaxZoom ?? (o as FirstViewOptionsBase).maxZoom ?? 22); tr.set(fit.center, fit.zoom, o.bearing ?? 0); }
-    else tr.set(o.center!, o.zoom!, o.bearing ?? 0);
+    if (o.bounds) { const fit = fitBounds(o.bounds, o.padding, o.width, o.height, o.fitMaxZoom ?? (o as FirstViewOptionsBase).maxZoom ?? 22); tr.set(fit.center, fit.zoom, o.bearing ?? 0, o.pitch); }
+    else tr.set(o.center!, o.zoom!, o.bearing ?? 0, o.pitch);
 
     const builder = new TileBuilder(fetchFn);
     builder.setStyle(style.layers, state);

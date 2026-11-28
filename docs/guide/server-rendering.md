@@ -461,10 +461,13 @@ that a map shows, pass its `center`, `zoom` and `bearing`.
 
 ## What the server renderer does not draw
 
-The server renderer draws the view from straight above, and it leaves out hillshade, color relief, heatmap layers,
-hollow lines, image patterns and 3D terrain. It writes one warning for each layer that it leaves out. The live map
+The server renderer leaves out hillshade, color relief, heatmap layers, hollow lines, image patterns and 3D terrain. It writes one warning for each layer that it leaves out. The live map
 draws them when it takes over. [What the server renderer does not draw](../reference/server.md#what-the-server-renderer-does-not-draw)
 lists each case and what the render shows instead.
+
+A view with `pitch` is drawn with the projection of the map, up to a pitch of 60. In the render, lines keep their
+width over their whole length, where the map draws them thinner farther from the camera.
+[A view with pitch](../reference/server.md#a-view-with-pitch) lists each difference.
 
 The SVG uses the fonts of the page that shows it. Set `fontFamily` to the font of the live map. The server estimates
 the width of each label, so where labels are close together it can show a different label than the live map shows.

@@ -1923,6 +1923,8 @@ server render: the layer "<layerId>" is not drawn, because the server render doe
 
 ## E2513
 
+Removed after 0.11.0.
+
 `Warning` `Server renderer`
 
 ```text

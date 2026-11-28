@@ -63,7 +63,7 @@ that get their view later, and for an `interface` that adds members: an `interfa
 | `center` | `LngLatLike` | | The center of the view, `[lng, lat]`. |
 | `zoom` | `number` | | The zoom level of the view. |
 | `bearing` | `number` | `0` | The bearing of the view in degrees. |
-| `pitch` | `number` | `0` | Has no effect, because the server render draws every view flat. |
+| `pitch` | `number` | `0` | The pitch of the view in degrees, from 0 to 60. |
 | [`bounds`](#bounds-and-padding) | `LngLatBoundsInput` | | A box `[west, south, east, north]` to fit into the view. |
 | [`padding`](#bounds-and-padding) | `PaddingInput` | `0` | Space in CSS pixels around `bounds` for the fit: one number, or `{top, right, bottom, left}`. |
 | `fitMaxZoom` | `number \| null` | `maxZoom` of `renderFirstView`, else 22 | The highest zoom of the fit to `bounds`, as `initialView.fitMaxZoom` of the description. |
@@ -248,7 +248,6 @@ everything when it takes over in the browser.
 
 | Not drawn | What the render shows |
 |---|---|
-| Pitch | The view from straight above. A `pitch` other than 0 in the options or in the view of the description writes one warning (`E2513`) for each process. |
 | `hillshade`, `color-relief` and `heatmap` layers | Nothing for that layer. |
 | Lines with a `line-gap-width` above 0 | Nothing for that layer. |
 | 3D terrain | The layers on flat ground. |
@@ -260,6 +259,18 @@ Each render writes one warning (`E2434`) for each layer that it leaves out becau
 when the layer is visible at the zoom of the render. The warning names the id of the layer. To leave such a layer
 out of the server render without the warning, set `overrides: {"<layer id>": {hidden: true}}` or return `false` for
 its id from `layerFilter`.
+
+## A view with pitch
+
+The server renderer draws a view with `pitch` with the projection of the map, so the fills, lines, circles, rasters and
+labels of the first view are where the map draws them when it takes over. These parts differ from the map:
+
+| Part | What the render shows |
+|---|---|
+| A `pitch` above 60 | The view at a pitch of 60, the default `maxPitch` of the map. The render does not read `maxPitch` of the description, so a map with a larger `maxPitch` tilts further when it takes over. |
+| Lines | Each line has its `line-width` and its dashes in pixels over its whole length. The map draws a line thinner where it is farther from the camera. |
+| Raster tiles | Each tile is drawn in 4 by 4 cells, and each cell is flat. A straight line of the image can bend a little at the edge of a cell, and a thin seam can show between cells. |
+| Circles with `circle-pitch-alignment: map` | A circle that faces the screen. With `circle-pitch-scale: map` (the default), its radius follows the distance from the camera, as in the map. |
 
 ## `renderFirstView`
 
