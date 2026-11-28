@@ -226,7 +226,10 @@ void main() {
 }`, `
 uniform vec4 u_color; uniform vec4 u_clip; uniform vec4 u_dash; uniform float u_dashScale; uniform float u_blur; uniform mat3 u_screen;
 in float v_blur; in float v_gap; in float v_aa;
-uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex; uniform vec2 u_patSize; uniform highp sampler2D u_stops;
+uniform sampler2D u_img; uniform vec4 u_rect; uniform vec2 u_tex; uniform vec2 u_patSize;
+#ifdef STEPS
+uniform highp sampler2D u_stops;
+#endif
 uniform int u_cap;
 float outside(float t, float from, float to) { return max(max(from - t, t - to), 0.0); }
 // How far t is outside the part from..to of a period p, which repeats. A part of length 0 is far, unless keep.
@@ -265,12 +268,15 @@ void main() {
   }
   if (u_patSize.x < 0.0) {
     // line-gradient: the color comes from a ramp, by the place along the whole line (see tessellateLine). A step
-    // gradient (u_patSize.x is -2) takes the color of the last of its stops at or below that place (see \`steps\`).
+    // gradient (the program \`lineStep\`) takes the color of the last of its stops at or below that place (see \`steps\`).
     float t = dot(v_color.rgb, vec3(16711680.0, 65280.0, 255.0)) / 16777215.0;
-    if (u_patSize.x > -1.5) { o = texture(u_img, vec2(t, 0.5)) * a; return; }
+#ifdef STEPS
     int l = 0, r = textureSize(u_stops, 0).x;
     while (r - l > 1) { int m = (l + r) / 2; if (t < texelFetch(u_stops, ivec2(m, 0), 0).r) r = m; else l = m; }
     o = texelFetch(u_img, ivec2(l, 0), 0) * a;
+#else
+    o = texture(u_img, vec2(t, 0.5)) * a;
+#endif
     return;
   }
   o = vec4(c.rgb * a, a);
@@ -520,7 +526,7 @@ void main() {
  * the atmosphere of the globe, which the renderer adds from the part of the globe (see `render`), or one of the
  * layer types that the part `layers` adds (see layers-more.ts).
  */
-type ProgramName = keyof typeof BUILTIN | 'terrain' | 'halo' | 'heat' | 'heatColor' | 'hillshade' | 'color-relief';
+type ProgramName = keyof typeof BUILTIN | 'lineStep' | 'terrain' | 'halo' | 'heat' | 'heatColor' | 'hillshade' | 'color-relief';
 /**
  * The second order of a frame on the globe (see `groundFrame` in placement.ts) at the point (u, v) of a symbol: for
  * x on the screen with k = 0, for y with k = 1. Without it (Mercator, a frame of four numbers, no frame) it is 0.
@@ -528,6 +534,10 @@ type ProgramName = keyof typeof BUILTIN | 'terrain' | 'halo' | 'heat' | 'heatCol
 const second = (q: number[] | undefined, k: number, u: number, v: number) => q && q.length > 4 ? q[4 + k] * u * u + q[6 + k] * u * v + q[8 + k] * v * v : 0;
 /** The shaders of each program. The part for elevation data adds the program `terrain` when it loads (#1849), the globe adds `halo`, and the part `layers` adds the programs of its layer types (#2215). */
 export const SHADERS: Partial<Record<ProgramName, string[]>> & typeof BUILTIN = BUILTIN;
+// A line with a `step` gradient has a program of its own, which is linked at its first use and not with the others:
+// SwiftShader (WebGL without a GPU) spends the time of the search of the stops on each pixel of every line, even where
+// a branch skips it. In the line program that made a quad of 1000 x 700 pixels 35% slower to draw (#1808).
+SHADERS.lineStep = [SHADERS.line[0], '#define STEPS\n' + SHADERS.line[1]];
 
 /** `u` is empty until the program is first used: see `link`. */
 /** The matrix of a tile moved by (tx, ty) pixels along the axes of the map (`*-translate`; see `mapTranslate`). */
@@ -540,7 +550,7 @@ const moveTile = (it: RenderItem<GLTile>, tx: number, ty: number) => {
 
 interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation>; shaders?: WebGLShader[]; /** The globe variant: the frame whose globe it has. */ frame?: number }
 /** The programs that have a globe variant (see `GLOBE_GLSL`). */
-const GLOBE_PROGRAMS = new Set(['fill', 'pattern', 'edge', 'line', 'circle', 'heat', 'raster', 'hillshade', 'color-relief', 'icon', 'extrusion', 'terrain']);
+const GLOBE_PROGRAMS = new Set(['fill', 'pattern', 'edge', 'line', 'lineStep', 'circle', 'heat', 'raster', 'hillshade', 'color-relief', 'icon', 'extrusion', 'terrain']);
 /** Floats for one corner of an icon: see `a_v` and `a_d` of the `icon` program. */
 const ICON_VERTEX = 7;
 interface IconBuffers {
@@ -768,7 +778,7 @@ export class GLRenderer {
         // at once, so that the driver can compile them in parallel (KHR_parallel_shader_compile, where it exists).
         if (!this.programs.fill) {
             gl.getExtension('KHR_parallel_shader_compile');
-            for (const n in SHADERS) this.programs[n as ProgramName] = this.link(...SHADERS[n as ProgramName]! as [string, string]);
+            for (const n in SHADERS) if (n !== 'lineStep') this.programs[n as ProgramName] = this.link(...SHADERS[n as ProgramName]! as [string, string]);
         }
         let p = this.programs[name] ??= this.link(...SHADERS[name]! as [string, string]);
         if (this.globe && GLOBE_PROGRAMS.has(name)) p = this.globePrograms[name] ??= this.link(SHADERS[name]![0], SHADERS[name]![1], this.globeCode!.GLOBE_GLSL);
@@ -1371,7 +1381,7 @@ export class GLRenderer {
                 gl.enable(gl.CULL_FACE); gl.cullFace(gl.FRONT);
             }
             draw: for (const it of patterned ? [] : items) for (const b of parts(it, L.id)) {
-                const u = use(b.type), m = moved(it), sh = shift(it);
+                const u = use(L.steps && b.type === 'line' ? 'lineStep' : b.type), m = moved(it), sh = shift(it);
                 if (extrude || b.type === 'circle' && s.terrain) this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                 if (first) {
                     first = false;
@@ -1408,7 +1418,7 @@ export class GLRenderer {
                         const cap = L.p.cap.dd ? 'butt' : L.p.cap.eval(zoom);
                         gl.uniform1i(u.u_cap, cap === 'round' ? 1 : 0);
                         const name = L.p.pattern.dd ? '' : L.p.pattern.eval(zoom), img = name ? s.icon?.(name) : undefined;
-                        gl.uniform2f(u.u_patSize, L.ramp ? L.steps ? -2 : -1 : img ? img.width / img.pixelRatio : 0, img ? img.height / img.pixelRatio : 1);
+                        gl.uniform2f(u.u_patSize, L.ramp ? -1 : img ? img.width / img.pixelRatio : 0, img ? img.height / img.pixelRatio : 1);
                         if (L.ramp) {
                             if (L.steps) { gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.rampTexture(L.steps)); gl.uniform1i(u.u_stops, 3); }
                             gl.activeTexture(gl.TEXTURE0);
