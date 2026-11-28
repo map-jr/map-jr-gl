@@ -234,6 +234,9 @@ uniform int u_cap;
 float outside(float t, float from, float to) { return max(max(from - t, t - to), 0.0); }
 // How far t is outside the part from..to of a period p, which repeats. A part of length 0 is far, unless keep.
 float span(float t, float from, float to, float p, bool keep) { return keep || to > from ? min(outside(t, from, to), min(outside(t, from - p, to - p), outside(t, from + p, to + p))) : 99.0; }
+#ifdef PATTERN
+vec4 wrapTexel(vec2 k) { return texelFetch(u_img, ivec2(u_rect.xy + mod(k, u_rect.zw)), 0); }
+#endif
 in vec4 v_color; in vec2 v_tile; in float v_d; in float v_hw; in float v_w; in float v_dist; in float v_persp; in float v_fw; out vec4 o;
 void main() {
   ${FS_CLIP_SCREEN}
@@ -259,13 +262,18 @@ void main() {
     float d = fw * (h + (!r ? G - D : D > 0.0 ? 0.5 - length(vec2(D, n)) : length(vec2(G, 0.5 - abs(n)))));
     a *= smoothstep(-v_aa, v_aa, d);
   }
+#ifdef PATTERN
   if (u_patSize.x > 0.0) {
-    // line-pattern: the image repeats along the line, scaled so that its height is the line width.
-    float w = max(v_w, 0.5);
-    vec2 p = vec2(fract(v_dist * u_dashScale * u_patSize.y / (u_patSize.x * w)), clamp(v_d / w + 0.5, 0.0, 1.0));
-    o = texture(u_img, (u_rect.xy + clamp(p * u_rect.zw, vec2(0.5), u_rect.zw - 0.5)) / u_tex) * a;
+    // line-pattern (the program \`linePattern\`), as in MapLibre GL JS: the image repeats along the line in lengths of
+    // its width times the line width at the whole zoom level over its height. Across, the image and a border of one
+    // texel that wraps around it span the whole stroke, soft edge included, and each period along the line has that
+    // border too. (The sprite sheet has no such border, so the four texels of the linear filter are fetched with the
+    // wrap here.)
+    vec2 p = vec2(fract(v_dist * u_dashScale * u_patSize.y / (u_patSize.x * max(v_fw, 0.5))), 0.5 - 0.5 * v_d / v_hw) * (u_rect.zw + 2.0) - 1.5, k = floor(p), f = p - k;
+    o = mix(mix(wrapTexel(k), wrapTexel(k + vec2(1.0, 0.0)), f.x), mix(wrapTexel(k + vec2(0.0, 1.0)), wrapTexel(k + 1.0), f.x), f.y) * a;
     return;
   }
+#endif
   if (u_patSize.x < 0.0) {
     // line-gradient: the color comes from a ramp, by the place along the whole line (see tessellateLine). A step
     // gradient (the program \`lineStep\`) takes the color of the last of its stops at or below that place (see \`steps\`).
@@ -526,7 +534,7 @@ void main() {
  * the atmosphere of the globe, which the renderer adds from the part of the globe (see `render`), or one of the
  * layer types that the part `layers` adds (see layers-more.ts).
  */
-type ProgramName = keyof typeof BUILTIN | 'lineStep' | 'terrain' | 'halo' | 'heat' | 'heatColor' | 'hillshade' | 'color-relief';
+type ProgramName = keyof typeof BUILTIN | 'lineStep' | 'linePattern' | 'terrain' | 'halo' | 'heat' | 'heatColor' | 'hillshade' | 'color-relief';
 /**
  * The second order of a frame on the globe (see `groundFrame` in placement.ts) at the point (u, v) of a symbol: for
  * x on the screen with k = 0, for y with k = 1. Without it (Mercator, a frame of four numbers, no frame) it is 0.
@@ -538,6 +546,8 @@ export const SHADERS: Partial<Record<ProgramName, string[]>> & typeof BUILTIN = 
 // SwiftShader (WebGL without a GPU) spends the time of the search of the stops on each pixel of every line, even where
 // a branch skips it. In the line program that made a quad of 1000 x 700 pixels 35% slower to draw (#1808).
 SHADERS.lineStep = [SHADERS.line[0], '#define STEPS\n' + SHADERS.line[1]];
+// (A line layer with a line-pattern has its own program, so that a plain line does not pay for the pattern in software GL.)
+SHADERS.linePattern = [SHADERS.line[0], '#define PATTERN\n' + SHADERS.line[1]];
 
 /** `u` is empty until the program is first used: see `link`. */
 /** The matrix of a tile moved by (tx, ty) pixels along the axes of the map (`*-translate`; see `mapTranslate`). */
@@ -550,7 +560,7 @@ const moveTile = (it: RenderItem<GLTile>, tx: number, ty: number) => {
 
 interface Program { prog: WebGLProgram; u: Record<string, WebGLUniformLocation>; shaders?: WebGLShader[]; /** The globe variant: the frame whose globe it has. */ frame?: number }
 /** The programs that have a globe variant (see `GLOBE_GLSL`). */
-const GLOBE_PROGRAMS = new Set(['fill', 'pattern', 'edge', 'line', 'lineStep', 'circle', 'heat', 'raster', 'hillshade', 'color-relief', 'icon', 'extrusion', 'terrain']);
+const GLOBE_PROGRAMS = new Set(['fill', 'pattern', 'edge', 'line', 'lineStep', 'linePattern', 'circle', 'heat', 'raster', 'hillshade', 'color-relief', 'icon', 'extrusion', 'terrain']);
 /** Floats for one corner of an icon: see `a_v` and `a_d` of the `icon` program. */
 const ICON_VERTEX = 7;
 interface IconBuffers {
@@ -784,7 +794,7 @@ export class GLRenderer {
         // at once, so that the driver can compile them in parallel (KHR_parallel_shader_compile, where it exists).
         if (!this.programs.fill) {
             gl.getExtension('KHR_parallel_shader_compile');
-            for (const n in SHADERS) if (n !== 'lineStep') this.programs[n as ProgramName] = this.link(...SHADERS[n as ProgramName]! as [string, string]);
+            for (const n in SHADERS) if (n !== 'lineStep' && n !== 'linePattern') this.programs[n as ProgramName] = this.link(...SHADERS[n as ProgramName]! as [string, string]);
         }
         let p = this.programs[name] ??= this.link(...SHADERS[name]! as [string, string]);
         if (this.globe && GLOBE_PROGRAMS.has(name)) p = this.globePrograms[name] ??= this.link(SHADERS[name]![0], SHADERS[name]![1], this.globeCode!.GLOBE_GLSL);
@@ -1392,7 +1402,7 @@ export class GLRenderer {
                 gl.enable(gl.CULL_FACE); gl.cullFace(gl.FRONT);
             }
             draw: for (const it of patterned ? [] : items) for (const b of parts(it, L.id)) {
-                const u = use(L.steps && b.type === 'line' ? 'lineStep' : b.type), m = moved(it), sh = shift(it);
+                const u = use(b.type !== 'line' ? b.type : L.steps ? 'lineStep' : L.p.pattern.dd || L.p.pattern.eval(zoom) ? 'linePattern' : 'line'), m = moved(it), sh = shift(it);
                 if (extrude || b.type === 'circle' && s.terrain) this.bindDem(u, s.terrain ? s.terrain.dem(it.id) : null, s.terrain?.exaggeration ?? 0, s.terrain ? s.tr.elevation : 0);
                 if (first) {
                     first = false;
