@@ -1,8 +1,8 @@
 {
   "label": "control characters and empty lines",
   "decision": "later",
-  "issue": 1792,
-  "reason": "U+001C is drawn as a box (#1792), the empty line of two newlines is left out (#1793), and the line breaks (#1794) and right-to-left order per line (#1795) differ.",
+  "issue": 1794,
+  "reason": "The line breaks (#1794) and right-to-left order per line (#1795) differ. The box for U+001C and the dropped empty line are fixed (#2594).",
   "tests": [
     "text-arabic/multi-paragraph"
   ]

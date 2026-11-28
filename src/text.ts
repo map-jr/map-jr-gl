@@ -96,6 +96,9 @@ function splitWords(para: string): string[] {
  * line is penalized less, a long one more. Widths ignore the spaces themselves, as MapLibre's do.
  */
 function wrap(text: string, maxWidth: number, measure: (s: string) => number): string[] {
+    // C0 controls and DEL have no glyph and would draw as a box, so they go before shaping (the line break stays).
+    // Tab, VT, FF and CR stay as whitespace, as in MapLibre; the CR of "\r\n" goes so that it adds no line.
+    text = text.replace(/\r\n/g, '\n').replace(/[\x00-\x08\x0E-\x1F\x7F]/g, '');
     const lines: string[] = [], paras = text.split('\n');
     // (The even width comes from the whole text, also when it has line breaks of its own: a name over a short second
     // line stays on one line although it is a little wider than the limit, as in MapLibre.)
@@ -108,7 +111,7 @@ function wrap(text: string, maxWidth: number, measure: (s: string) => number): s
         const words = splitWords(para);
         // (The number of lines comes from the full width, spaces included; the break positions from widths without them.)
         const widths = words.map(w => measure(w.trim()));
-        if (!words.length) continue;
+        if (!words.length) { lines.push(''); continue; }
         // best[i]: the least "badness" of any way of breaking before word i, and which earlier break it follows.
         const best: {badness: number; prev: number; x: number}[] = [{badness: 0, prev: -1, x: 0}];
         let x = 0;
