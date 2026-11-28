@@ -886,6 +886,27 @@ export function placeLabels(
 }
 
 /**
+ * As in MapLibre GL JS (`placeCollisionCircles`), text along a line takes space as circles of the height of the text and
+ * `text-padding` (the radius `r`), on the line through the centers of its glyphs (`mids`, x and y pairs), from the center of the
+ * first glyph to that of the last (inset by a quarter of the radius at each end), with their centers 2.5 radii apart. (The
+ * glyph centers stand for the line between them; the text has two glyphs or more.) Each circle is its box and its radius.
+ */
+export function lineCircles(mids: number[], r: number): Circle[] {
+    const boxes: Circle[] = [], along = [0];
+    for (let i = 2; i < mids.length; i += 2) along.push(along[i / 2 - 1] + Math.hypot(mids[i] - mids[i - 2], mids[i + 1] - mids[i - 1]));
+    const length = along[along.length - 1], inset = Math.min(r / 4, length / 2), padded = length - inset * 2;
+    const count = length <= r / 2 ? 1 : Math.ceil(padded / (r * 2.5)) + 1;
+    for (let i = 0, j = 1; i < count; i++) {
+        const d = inset + padded * i / Math.max(count - 1, 1);
+        while (j < along.length - 1 && along[j] < d) j++;
+        const f = along[j] > along[j - 1] ? (d - along[j - 1]) / (along[j] - along[j - 1]) : 0;
+        const x = mids[j * 2 - 2] + (mids[j * 2] - mids[j * 2 - 2]) * f, y = mids[j * 2 - 1] + (mids[j * 2 + 1] - mids[j * 2 - 1]) * f;
+        boxes.push([x - r, y - r, x + r, y + r, r]);
+    }
+    return boxes;
+}
+
+/**
  * Lays one line of text along a label's path. Returns each glyph's start point (relative to the anchor) and angle, plus
  * collision circles, or null when the text does not fit or the line bends too sharply to read. `fit` scales each glyph
  * about its place on the line, for a glyph drawn at another size than the one that places it.
@@ -924,7 +945,7 @@ function followLine(
     // under each glyph (in the tile, at its place along the piece) gives nearly the same result without the division.
     const z = 2 ** it.id.z, behind = (u: number, v: number) => !!tr.globeness && tr.globe!.hidden(tr, (it.id.x + u / EXTENT) / z, (it.id.y + v / EXTENT) / z);
     const spacing = l.spacing * EM * size, shift = (l.offset[1] + BASELINE) * EM * size; // drop the baseline so the text is centered on the line
-    const curve: number[] = [], boxes: Circle[] = [], ground: number[] = [], mids: number[] = [];
+    const curve: number[] = [], ground: number[] = [], mids: number[] = [];
     let seg = 1, pen = start, last = NaN, bx = 0, by = 0;
     for (const advance of line.advances) {
         const a = advance * size, mid = pen + a / 2;
@@ -954,21 +975,7 @@ function followLine(
         mids.push(cx, cy);
         pen += a + spacing;
     }
-    // As in MapLibre GL JS (`placeCollisionCircles`), the text takes space as circles of the height of the text and
-    // `text-padding`, on the line from the center of the first glyph to that of the last (inset by a quarter of the
-    // radius at each end), with their centers 2.5 radii apart. (The glyph centers stand for the line between them; the
-    // text has two glyphs or more.)
-    const r = h / 2 + l.padding, along = [0];
-    for (let i = 2; i < mids.length; i += 2) along.push(along[i / 2 - 1] + Math.hypot(mids[i] - mids[i - 2], mids[i + 1] - mids[i - 1]));
-    const length = along[along.length - 1], inset = Math.min(r / 4, length / 2), padded = length - inset * 2;
-    const count = length <= r / 2 ? 1 : Math.ceil(padded / (r * 2.5)) + 1;
-    for (let i = 0, j = 1; i < count; i++) {
-        const d = inset + padded * i / Math.max(count - 1, 1);
-        while (j < along.length - 1 && along[j] < d) j++;
-        const f = along[j] > along[j - 1] ? (d - along[j - 1]) / (along[j] - along[j - 1]) : 0;
-        const x = mids[j * 2 - 2] + (mids[j * 2] - mids[j * 2 - 2]) * f, y = mids[j * 2 - 1] + (mids[j * 2 + 1] - mids[j * 2 - 1]) * f;
-        boxes.push([x - r, y - r, x + r, y + r, r]);
-    }
+    const boxes = lineCircles(mids, h / 2 + l.padding);
     return {curve, ground: k ? ground : undefined, boxes};
 }
 

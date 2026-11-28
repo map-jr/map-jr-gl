@@ -90,6 +90,8 @@ export const patternKey = (id: string, k: number) => k ? id + '\0' + k : id;
 export const MAX_RUNS = 64;
 export interface LabelSrc {
     x: number; y: number; text: string;
+    /** The place of the feature in the layer of its tile, as `queryTile` counts it: a query finds the label's feature by it. A line made of several lines that meet (a road that comes in parts) belongs to the first of them that the tile has. */
+    at: number;
     /** `symbol-sort-key`, when the layer has one. */
     key?: number;
     /** Direction of the line at the anchor in tile space (radians), or null for point labels. */
@@ -215,7 +217,9 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             const plain = direct && !sorted && !p.iconAnchor.dd && !p.iconOffset.dd && !p.iconAlign.dd && !p.iconPitch.dd && p.iconPitch.eval(zs) !== 'map' && !(p.iconPitch.eval(zs) === 'auto' && p.iconAlign.eval(zs) === 'map') && !p.iconColor.dd && !p.iconPadding.dd;
             const iconNames = new Map<string, number>(), iconName: number[] = [], iconPos: number[] = [], iconRotate: number[] = [], iconSize: number[] = [], iconAlpha: number[] = [];
             let iconAvoid: boolean | undefined;
+            let at = -1;
             for (const f of vl.features) {
+                at++;
                 ctx.f = f;
                 f.state = f.id === undefined ? undefined : states?.[L.source!]?.[`${L.sourceLayer ?? ''}|${f.id}`];
                 if (L.filter && !L.filter(ctx)) continue;
@@ -246,7 +250,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
                 // `text-pitch-alignment` and `icon-pitch-alignment`: `auto` follows the rotation alignment.
                 const flat = (pitch: unknown, alignment: unknown) => pitch === 'map' || (pitch !== 'viewport' && !turns(alignment));
                 const base = {
-                    text, size0: p.size.eval(zs, f), size1: p.size.eval(z1, f), op,
+                    text, at, size0: p.size.eval(zs, f), size1: p.size.eval(z1, f), op,
                     color: [color[0], color[1], color[2], color[3] * op] as RGBA,
                     halo: [haloColor[0], haloColor[1], haloColor[2], haloColor[3] * op] as RGBA, haloWidth: p.haloWidth.eval(zs, f), haloBlur: p.haloBlur.eval(zs, f), rotate: p.rotate.eval(zs, f) * Math.PI / 180, justify: justification(p.justify.eval(zs, f), p.anchor.eval(zs, f)), font: fontKey(p.font.eval(zs, f)),
                     maxWidth: p.maxWidth.eval(zs, f), spacing: p.spacing.eval(zs, f), offset: p.offset.eval(zs, f), anchor: p.anchor.eval(zs, f),
