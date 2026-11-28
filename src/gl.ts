@@ -1,4 +1,4 @@
-import {EXTENT, clamp, latFromMerc, mercX, mercY, type TileID, type Transform} from './geo.ts';
+import {EXTENT, clamp, latFromMerc, mercX, mercY, tileOrder, type TileID, type Transform} from './geo.ts';
 import {withFilter, mapTranslate, type CompiledLayer, type Light} from './style.ts';
 import {compileProp, type Prop} from './expr.ts';
 import type {Sky} from './resolve.ts';
@@ -991,7 +991,7 @@ export class GLRenderer {
             let u: Record<string, WebGLUniformLocation> | undefined;
             // icon-translate moves the point by tile units before it is projected, as in MapLibre GL JS (#2021).
             const move = mapTranslate(L.p.iconTranslate.eval(zoom), L.p.iconTranslateAnchor.eval(zoom), tr.bearing);
-            for (const it of s.items.get(L.source!) ?? []) {
+            for (const it of [...s.items.get(L.source!) ?? []].sort(tileOrder)) { // (the order of the tiles of the placed icons)
                 const b = it.tile.icons?.[L.id];
                 if (!b || !(b.counts[0] + b.counts[1])) continue;
                 const p = L.p;
