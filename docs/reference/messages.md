@@ -1929,6 +1929,18 @@ server render: the layer "<layerId>" is not drawn, because the server render doe
 server render: the pitch is <pitch>, and the server render draws the first view flat, as if the pitch were 0, until #395. The map in the browser uses the pitch. When that is intended, nothing needs to change.
 ```
 
+## E2555
+
+`Warning` `Compat entry` `Development build only`
+
+```text
+<where>: <why> The map draws the layer, and MapLibre GL JS writes a warning too. Write the whole filter in expression syntax.
+```
+
+```text
+<where>: <why>. The map draws the layer, and MapLibre GL JS writes a warning too. Write the whole filter in expression syntax.
+```
+
 ## E10017
 
 `Warning` `Both entries`

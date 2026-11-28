@@ -63,6 +63,14 @@ const styles = [
         ...['x', 5, [], ['top'], ['top', 1], ['top', [1, 2]], ['bogus', [1, 2]], ['top', [1, 'a']], ['top', [1, 2, 3]], ['top', [1, 2], 'left'], ['top', [1, 2], 'left', [0, 1]], ['literal', ['top', [1, 2]]], ['interpolate', ['linear'], ['zoom'], 0, ['literal', ['top', [1, 2]]], 5, ['literal', ['top', [2, 3]]]]]
             .map((v, i) => ({id: 'v' + i, type: 'symbol', source: 'g', layout: {'text-variable-anchor-offset': v}})),
     ]},
+    // The value of each stop of a function of icon-image, text-field and text-variable-anchor-offset.
+    {sources: {g: {type: 'geojson', data: fc}}, layers: [
+        ...['icon-image', 'text-field'].flatMap(k => [true, null, 5, 'x', '', ['a'], [], [1], ['get', 'x'], ['literal', 'x'], ['image', 'a'], ['format', 'a']]
+            .map((v, i) => ({id: `${k}${i}`, type: 'symbol', source: 'g', layout: {[k]: {stops: [[0, 'a'], [5, v]]}}}))),
+        ...[['top', [1, 2]], ['bogus', [1, 2]], [], null, 5, ['top', 1], ['top'], ['get', 'a']].map((v, i) => ({id: 'o' + i, type: 'symbol', source: 'g', layout: {'text-variable-anchor-offset': {stops: [[0, v]]}}})),
+        {id: 'p', type: 'symbol', source: 'g', layout: {'icon-image': {stops: [[0, 'a']], property: 'p'}, 'text-field': {stops: [[0, 'a']], default: 5}}},
+        {id: 'q', type: 'symbol', source: 'g', layout: {'icon-image': {stops: [[0, 'a']], default: ['get', 'x']}, 'text-variable-anchor-offset': {stops: [[0, ['top', [1, 2]]]], default: 5}}},
+    ]},
     // Step 4: filters (the legacy syntax and expressions) and the `text-font` that is not a literal.
     {sources: {g: {type: 'geojson', data: fc}}, layers: [
         {id: 'a', type: 'fill', source: 'g', filter: 5}, {id: 'b', type: 'fill', source: 'g', filter: []}, {id: 'c', type: 'fill', source: 'g', filter: true},
@@ -74,6 +82,12 @@ const styles = [
         {id: 'n', type: 'fill', source: 'g', filter: ['foo', 1]}, {id: 'o', type: 'fill', source: 'g', filter: ['all', ['==', ['get', 'a'], 1], ['feature-state', 'x']]},
         {id: 'p', type: 'fill', source: 'g', filter: ['>', ['get', 'a'], ['zoom']]}, {id: 'q', type: 'fill', source: 'g', filter: ['case', ['get', 'a'], 1, 2]},
         {id: 'r', type: 'fill', source: 'g', filter: ['==', ['feature-state', 'a'], 1]}, {id: 's', type: 'fill', source: 'g', filter: ['has', 'a']},
+        // A filter in the legacy syntax inside an expression filter is a warning in MapLibre.
+        {id: 'mixed0', type: 'fill', source: 'g', filter: ['all', ['==', 'a', 1], ['==', ['get', 'b'], 1]]}, {id: 'mixed1', type: 'fill', source: 'g', filter: ['any', ['!in', 'a', 1, 2], ['in', 'a', ['literal', [1]]]]},
+        {id: 'mixed2', type: 'fill', source: 'g', filter: ['all', ['has', 'a'], ['has', 'b']]}, {id: 'mixed3', type: 'fill', source: 'g', filter: ['all', ['!has', 'a'], ['get', 'b']]},
+        {id: 'mixed4', type: 'fill', source: 'g', filter: ['!', ['all', ['>', '$type', 'Point'], ['get', 'x']]]}, {id: 'mixed5', type: 'fill', source: 'g', filter: ['case', ['in', '$id', 1, 2], true, ['get', 'x'], false, ['==', 'a', 1], true, false]},
+        {id: 'mixed6', type: 'fill', source: 'g', filter: ['none', ['==', ['get', 'a'], 1], ['has', '$type'], ['!has', 'a', 'b']]}, {id: 'mixed7', type: 'fill', source: 'g', filter: ['all', ['any', ['==', 'a', 1], ['get', 'x']], ['!=', '$id', 1]]},
+        {id: 'mixed8', type: 'fill', source: 'g', filter: ['all', ['==', '$type', 'Point'], ['has', 'a', 'b']]},
         {id: 't', type: 'symbol', source: 'g', layout: {'text-font': ['get', 'font']}}, {id: 'u', type: 'symbol', source: 'g', layout: {'text-font': ['literal', ['Arial']]}},
         {id: 'v', type: 'symbol', source: 'g', layout: {'text-font': ['case', ['get', 'a'], ['literal', ['A']], ['literal', ['B']]]}},
         {id: 'w', type: 'symbol', source: 'g', layout: {'text-font': ['case', ['get', 'a'], ['literal', ['A']], ['get', 'f']]}},
@@ -93,6 +107,12 @@ const sourceStyles = [
     {sources: {v: {type: 'vector', tiles: [1, 'a'], bounds: [1, 2, 3, 'x'], promoteId: 7}, r: {type: 'raster', tiles: ['a'], tileSize: 'big', bounds: 'x', scheme: 'tms'}}, layers: []},
     {sources: {g: {type: 'geojson', data: fc, maxzoom: 'a', buffer: 600, tolerance: null, cluster: 'yes', clusterRadius: -1, clusterMaxZoom: 'a', clusterMinPoints: 'a', lineMetrics: 0, generateId: 'a', promoteId: ['a'], filter: ['==', 'a', {}], attribution: 1, extra: 1}}, layers: []},
     {sources: {g: {type: 'geojson', data: fc, filter: ['get', 'a'], promoteId: 'id', cluster: true, clusterProperties: {sum: ['+', ['get', 'a']]}}}, layers: []},
+    // The expressions of clusterProperties: the map and the reduce expression (an operator or an expression).
+    {sources: {g: {type: 'geojson', data: fc, cluster: true, clusterProperties: {
+        s: ['+', ['get', 'a']], t: ['max', ['get', 'a']], u: [['+', ['accumulated'], ['get', 'u']], ['get', 'a']], v: ['foo', 1], w: [['+', 1, ['get', 'a']], ['zoom']], x: ['+', 'a', 'b'], y: [['max', ['accumulated'], ['get', 'y']], ['concat', 'a']],
+        z: ['+', ['feature-state', 'x']], a: ['+', ['properties']], b: ['+', ['id']], c: ['+', 1], d: [['+', ['accumulated']], 1], e: [['get', 'q'], ['get', 'q']], f: ['+', ['global-state', 'a']], g: ['concat', ['get', 'a']],
+        h: [['+', ['accumulated'], ['accumulated']], ['let', 'a', 1, ['var', 'b']]], i: ['+'], j: [], k: [['+', ['zoom']], 1]}}}, layers: []},
+    {sources: {g: {type: 'geojson', data: fc, clusterProperties: {s: ['+', ['zoom']]}}, h: {type: 'geojson', data: fc, cluster: false, clusterProperties: {s: ['foo']}}}, layers: []},
     {sources: {d: {type: 'raster-dem', url: 3, encoding: 'x', redFactor: 2, tileSize: 'a', unknown: 1}, e: {type: 'raster-dem', encoding: 'custom', redFactor: 'a', baseShift: 1, bounds: [1, 2, 3, 4]}, f: {type: 'raster-dem', encoding: 'terrarium', baseShift: 1, blueFactor: 1}}, layers: []},
     {sources: {i: {type: 'image', url: 4, coordinates: coords, extra: 1}, j: {type: 'image', url: 'a', coordinates: [[0, 1], [1, 1], [1, 0]]}, k: {type: 'image', coordinates: [[0, 1], [1, 1], [1, 0], 'a']}, l: {type: 'image', coordinates: [[0, 1], [1, 'x'], [1, 0, 3], [0, 0]]}, m: {type: 'image', coordinates: 'a'}}, layers: []},
     {sources: {m: {type: 'video', urls: ['a', 2], coordinates: coords, url: 'a'}, n: {type: 'video', urls: 'a', coordinates: [[0, 1], [1, 1], [1, 0], [0, 0], [1, 1]]}}, layers: []},
@@ -138,4 +158,14 @@ test('the compat entry fires each error once, with the place and the text, and v
     const skipped: string[] = [];
     zoomCurveErrors(styles[2], new Set(), e => skipped.push(e.message), true);
     assert.deepEqual(skipped, []);
+});
+
+test('a legacy filter mixed into an expression is one console warning with the text of MapLibre GL JS, and not an error', (t) => {
+    const warned: string[] = [], errors: string[] = [], reported = new Set<string>();
+    t.mock.method(console, 'warn', (m: string) => warned.push(m));
+    const style = {sources: {g: {type: 'geojson', data: fc}}, layers: [{id: 'a', type: 'fill', source: 'g', filter: ['all', ['has', '$id'], ['==', ['get', 'b'], 1]]}]};
+    zoomCurveErrors(style, reported, e => errors.push(e.message));
+    zoomCurveErrors(style, reported, e => errors.push(e.message));
+    assert.deepEqual(errors, []);
+    assert.deepEqual(warned, ['[map-jr-gl] E2555 layers[0].filter[1]: Mixing deprecated filter syntax with expression syntax is not supported. Convert ["has","$id"] to expression syntax. The map draws the layer, and MapLibre GL JS writes a warning too. Write the whole filter in expression syntax.']);
 });
