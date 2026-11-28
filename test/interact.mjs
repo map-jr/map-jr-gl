@@ -3412,6 +3412,38 @@ for (const mode of renderers) {
         });
         check('[main] queryRenderedFeatures does not find a label on its icon that collision hid with icon-optional, and finds a shown icon under the text of another label, with both renderers (#2089)',
             ['main', 'worker'].every(r => hiddenIcon[r].join() === 'A,B,B'), JSON.stringify(hiddenIcon));
+        // A query tests the collision boxes that placement made, each with its feature, as MapLibre GL JS does (#2586):
+        // an icon that icon-text-fit stretches 40 px around the text "A" is found 35 px right of and below its point (#2070); of
+        // two labels "Same" at one point whose icons collide, only the one whose icon is shown is found (#2098); and line text
+        // with text-translate [0, 40] is found in a band 16 px high 40 px below its line and not in one on the line (#2546).
+        const placedBoxes = await page.evaluate(async () => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const out = {};
+            const point = (name, text) => ({type: 'Feature', properties: {name, text}, geometry: {type: 'Point', coordinates: [0, 0]}});
+            const make = async (renderer, data, layout, paint = {}) => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:absolute;left:-2000px;top:0;width:600px;height:300px'}));
+                const m = new mod.Map({container: el, renderer, center: [0, 0], zoom: 3, attributionControl: false, fadeDuration: 0, style: {version: 8,
+                    sources: {p: {type: 'geojson', data}}, layers: [{id: 't', type: 'symbol', source: 'p', layout, paint}]}});
+                for (const name of ['a', 'b']) m.addImage(name, {width: 60, height: 20, data: new Uint8Array(60 * 20 * 4).fill(255)});
+                await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
+                const c = m.project([0, 0]), ask = async (dx, dy, r = 0) => (await m.queryRenderedFeatures(r ? [[c.x + dx - 280, c.y + dy - r], [c.x + dx + 280, c.y + dy + r]] : [c.x + dx, c.y + dy], {layers: ['t']})).map(f => f.properties.name).sort().join('/') || '-';
+                return {ask, done: () => { m.remove(); el.remove(); }};
+            };
+            for (const renderer of ['main', 'worker']) {
+                const fit = await make(renderer, point('F', 'A'), {'text-field': ['get', 'text'], 'icon-image': 'a', 'icon-text-fit': 'both', 'icon-text-fit-padding': [40, 40, 40, 40]});
+                out[renderer] = [await fit.ask(35, 0), await fit.ask(0, 35)];
+                fit.done();
+                const same = await make(renderer, {type: 'FeatureCollection', features: [point('a', 'Same'), point('b', 'Same')]}, {'text-field': ['get', 'text'], 'icon-image': ['get', 'name'], 'icon-optional': true});
+                out[renderer].push(await same.ask(0, 0));
+                same.done();
+                const line = await make(renderer, {type: 'Feature', properties: {name: 'L'}, geometry: {type: 'LineString', coordinates: [[-20, 0], [20, 0]]}}, {'text-field': 'Line text here', 'symbol-placement': 'line'}, {'text-translate': [0, 40]});
+                out[renderer].push(await line.ask(0, 40, 8), await line.ask(0, 0, 8));
+                line.done();
+            }
+            return out;
+        });
+        check('[main] queryRenderedFeatures tests the collision boxes of placement: a fitted icon, the feature of a label, translated line text, with both renderers (#2586)',
+            ['main', 'worker'].every(r => placedBoxes[r].join() === 'F,F,a,L,-'), JSON.stringify(placedBoxes));
         // Of two icons without text whose boxes collide, the hidden one is not found, at its own point or over the whole
         // view: MapLibre GL JS finds only placed symbols (#2181).
         const hiddenIcons = await page.evaluate(async () => {
