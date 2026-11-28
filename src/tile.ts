@@ -12,9 +12,9 @@ import {VARIANT, variantName} from './markers.ts';
  * The SVG backend turns this straight into paths; `tessellate` turns it into GPU buffers.
  */
 export interface Geom {
-    /** In tile units, or in halves of a tile unit when `half` is set (lines, see `tessellateLine`). */
+    /** In tile units, or in halves of a tile unit when `half` is set (lines and buildings, see `tessellateLine` and `tessellateExtrusion`). */
     coords: Int16Array | Float32Array;
-    /** The coordinates are halves of a tile unit (the batches of lines), clamped to int16. */
+    /** The coordinates are halves of a tile unit (the batches of lines and of buildings), clamped to int16. */
     half?: boolean;
     /** Cumulative point count at the end of each ring. */
     ringEnds: Uint32Array;
@@ -430,7 +430,7 @@ export function buildTile(data: Uint8Array | TileLayers, tz: number, layers: Com
             if (!featEnds.length) continue;
             const batch: Batch = {
                 type: kind as Batch['type'],
-                geom: {coords: kind === 'line' ? halves(coords) : Int16Array.from(coords), ringEnds: Uint32Array.from(ringEnds), featEnds: Uint32Array.from(featEnds), half: kind === 'line' || undefined},
+                geom: {coords: kind === 'line' || extrude ? halves(coords) : Int16Array.from(coords, Math.round), ringEnds: Uint32Array.from(ringEnds), featEnds: Uint32Array.from(featEnds), half: kind === 'line' || extrude || undefined},
             };
             if (ddColor && !progress) batch.color = Uint8Array.from(color);
             if (progress) batch.progress = Float32Array.from(progress);
@@ -753,7 +753,11 @@ const outside = (c: ArrayLike<number>, s: number, e: number) => {
  * edge crosses a line of the grid, as MapLibre GL JS does, so that both follow the sphere.
  */
 function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
-    const {featEnds} = b.geom, v: number[] = [], idx: number[] = [], feats: number[] = [], ed: number[] = [], cen: number[] = [];
+    // (The geometry is in halves of a tile unit, as exact as in MapLibre GL JS, whose GeoJSON tiles are 8192 units wide:
+    // a rounding to whole units moves an edge by up to 1/16 of a pixel and can leave a row of pixels out (#1803). The
+    // vertices are floats, so they keep the halves.)
+    const geom = b.geom.half ? {...b.geom, coords: Float32Array.from(b.geom.coords, t => t / 2)} : b.geom;
+    const {featEnds} = geom, v: number[] = [], idx: number[] = [], feats: number[] = [], ed: number[] = [], cen: number[] = [];
     let count = 0;
     for (let f = 0; f < featEnds.length; f++) {
         const top = b.height![f], bottom = Math.min(b.base ? b.base[f] : 0, top);
@@ -763,8 +767,8 @@ function tessellateExtrusion(b: Batch, globe?: GlobeCut): GLBatch | null {
             feats.push(f);
             return count++;
         };
-        eachPolygon(b.geom, f, (p0, p1, holes) => {
-            let coords: ArrayLike<number> = b.geom.coords.subarray(p0 * 2, p1 * 2), bounds = [0, ...holes, p1 - p0];
+        eachPolygon(geom, f, (p0, p1, holes) => {
+            let coords: ArrayLike<number> = geom.coords.subarray(p0 * 2, p1 * 2), bounds = [0, ...holes, p1 - p0];
             if (outside(coords, 0, bounds[1])) return;
             // On 3D terrain, MapLibre GL JS lifts each polygon by the ground at its centroid (the mean of its points,
             // without the closing point of a ring), so the roof stays flat and every part of a MultiPolygon has its own.
@@ -872,9 +876,10 @@ function tessellateLine(b: Batch): GLBatch | null {
     let count = 0, f = 0, ringLength = 1;
     const vert = (x: number, y: number, nx: number, ny: number, side: number, dist: number) => {
         if (b.progress) {
-            // The place along the whole line goes in the color's red and green bytes, as one 16-bit number.
-            const from = b.progress[f * 2], part = Math.min(1, Math.max(0, from + (b.progress[f * 2 + 1] - from) * dist / ringLength)), t = Math.round(part * 65535);
-            color.push(t >> 8, t & 255, 0, 255);
+            // The place along the whole line goes in the color's red, green and blue bytes, as one 24-bit number, so that
+            // the steps of a `step` gradient a millionth of the line apart stay apart (#1808).
+            const from = b.progress[f * 2], part = Math.min(1, Math.max(0, from + (b.progress[f * 2 + 1] - from) * dist / ringLength)), t = Math.round(part * 16777215);
+            color.push(t >> 16, t >> 8 & 255, t & 255, 255);
             // The dashes of a line with a gradient: MapLibre measures such a line as 16383 tile units from end to
             // end, whatever its length. The same is done here, so that the dashes are those of MapLibre.
             dist = part * 16383.5;

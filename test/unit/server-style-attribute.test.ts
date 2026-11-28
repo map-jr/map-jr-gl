@@ -17,7 +17,8 @@ function styleCounts(html: string): number[] {
 test('renderFirstView has no element with two style attributes', async () => {
     for (const extra of [{}, {controls: [navigation(), scale()]}, {attribution: false}, {colorScheme: 'dark' as const}, {nonce: 'abc'}]) {
         const html = (await renderFirstView({style, ...view, ...extra} as any)).html;
-        assert.ok(styleCounts(html).length > 1 && Math.max(...styleCounts(html)) === 1, html.slice(0, 300));
+        // With a nonce the markup has no style attribute at all (see server-controls.test.ts).
+        assert.ok(styleCounts(html).length > 1 && Math.max(...styleCounts(html)) === ('nonce' in extra ? 0 : 1), html.slice(0, 300));
     }
 });
 

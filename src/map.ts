@@ -1243,11 +1243,21 @@ export class Map {
         const c: Command = {type: 'ease', duration, center: center && toLngLat(center), zoom, bearing, pitch, around, padding, easing, fly};
         this.post(c);
         this.eased = {c, at: performance.now()};
-        this.easeStarted();
+        this.easeStarted(c);
         return this;
     }
     /** @internal Called when `easeTo` has sent an animation (not a jump). The compat entry starts the movement here. */
-    protected easeStarted() {}
+    protected easeStarted(_c: Extract<Command, {type: 'ease'}>) {}
+    /**
+     * @internal Fires `zoomstart`, `rotatestart` and `pitchstart` in the call of an animation for the axes that it changes,
+     * after `movestart`, as MapLibre GL JS does (#2474). The reports of the engine then fire no second start.
+     */
+    protected startAxes(c: {zoom?: number; bearing?: number; pitch?: number; fly?: unknown}) {
+        const zoom = c.fly ? true : c.zoom !== undefined && c.zoom !== this.tr.zoom;
+        if (zoom && !this.zooming) { this.zooming = true; this.fire('zoomstart'); }
+        if (c.bearing !== undefined && c.bearing !== this.tr.bearing && !this.rotating) { this.rotating = true; this.fire('rotatestart'); }
+        if (c.pitch !== undefined && c.pitch !== this.tr.pitch && !this.pitching) { this.pitching = true; this.fire('pitchstart'); }
+    }
     /** @internal Starts a movement now, with `movestart`, instead of at the first report of the engine. */
     protected begin() { this.easedDuringDrag = false; this.beganAt = this.seq; if (!this.moving) { this.moving = true; this.fire('movestart'); } }
     /**

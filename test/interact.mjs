@@ -648,7 +648,7 @@ for (const mode of renderers) {
             const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             await new Promise(r => m.once('load', r));
             const log = [];
-            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || (t !== 'move' && t !== 'zoom')) log.push(t); });
             m.easeTo({center: [20, 50], duration: 2000});
             await new Promise(r => setTimeout(r, 500));
             log.push('|stop'); m.stop(); log.push('|stopret');
@@ -667,7 +667,7 @@ for (const mode of renderers) {
             const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             await new Promise(r => m.once('load', r));
             const log = [];
-            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || (t !== 'move' && t !== 'zoom')) log.push(t); });
             m.easeTo({center: [20, 50], duration: 2000});
             await new Promise(r => setTimeout(r, 500));
             log.push('|call2'); m[second]({center: [30, 55], duration: 1000}); log.push('|ret2');
@@ -681,7 +681,7 @@ for (const mode of renderers) {
                 ours === ml && ml.startsWith('|call2 moveend movestart |ret2'), JSON.stringify({ours, ml}));
         }
         // An easeTo or flyTo during a drag fires movestart inside the call, and the drag goes on: the ease fires moveend, and
-        // the release fires dragend and a second moveend, as in MapLibre GL JS (#2469). (The zoom events wait for #2474.)
+        // the release fires dragend and a second moveend, as in MapLibre GL JS (#2469). The zoom events fire in the call too (#2474).
         const dragEase = (lib, second, early) => page.evaluate(async ([lib, renderer, second, early]) => {
             const mod = await import(lib === 'ml' ? '/ml/maplibre-gl.mjs' : '/dist/map-jr-gl-maplibre-compat.js');
             if (lib === 'ml') mod.setWorkerUrl(new URL('/ml/maplibre-gl-worker.mjs', location.href).href);
@@ -689,7 +689,7 @@ for (const mode of renderers) {
             const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             await new Promise(r => m.once('load', r));
             const log = [], c = m.getCanvas(), frame = () => new Promise(r => requestAnimationFrame(() => r()));
-            for (const t of ['movestart', 'dragstart', 'dragend', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            for (const t of ['movestart', 'zoomstart', 'dragstart', 'dragend', 'move', 'zoom', 'zoomend', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || (t !== 'move' && t !== 'zoom')) log.push(t); });
             const send = (type, [x, y]) => {
                 const o = {bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse', isPrimary: true, view: window};
                 c.dispatchEvent(lib === 'ml' ? new MouseEvent(type.replace('pointer', 'mouse'), o) : new PointerEvent(type, o));
@@ -699,10 +699,10 @@ for (const mode of renderers) {
             await new Promise(r => setTimeout(r, 200));
             log.push('|call'); m[second]({center: [30, 55], zoom: 6, duration: early ? 3000 : 300}); log.push('|ret');
             // (`early`: the pointer lifts while the ease still runs.)
-            // (It waits for the first `move` of the ease, not for a time: the report of the engine can come late. When the ease
+            // (It waits for the first `zoom` of the ease, not for a time: the report of the engine can come late. When the ease
             // has ended by then, the attempt is void and the caller tries again.)
             if (early) {
-                for (let i = 0; i < 200 && !log.slice(log.indexOf('|call')).includes('move'); i++) await new Promise(r => setTimeout(r, 25));
+                for (let i = 0; i < 200 && !log.slice(log.indexOf('|call')).includes('zoom'); i++) await new Promise(r => setTimeout(r, 25));
                 if (log.slice(log.indexOf('|call')).includes('moveend')) { m.remove(); el.remove(); return 'RETRY'; }
             } else for (let i = 0; i < 100 && !log.slice(log.indexOf('|call')).includes('moveend'); i++) await new Promise(r => setTimeout(r, 50));
             await new Promise(r => setTimeout(r, 100));
@@ -710,17 +710,18 @@ for (const mode of renderers) {
             if (early) for (let i = 0; i < 200 && log.slice(log.indexOf('|call')).filter(t => t === 'moveend').length < 2; i++) await new Promise(r => setTimeout(r, 25));
             else await new Promise(r => setTimeout(r, 600));
             m.remove(); el.remove();
-            return log.slice(log.indexOf('|call')).join(' ');
+            // (The number of frames differs between runs: a run of `move zoom` counts once.)
+            return log.slice(log.indexOf('|call')).join(' ').replace(/(move zoom)( move zoom)*/g, '$1');
         }, [lib, mode, second, early]).catch(e => String(e));
         for (const second of ['easeTo', 'flyTo']) {
             const ours = await dragEase('ours', second), ml = await dragEase('ml', second);
             check(`[${mode}] ${second} during a drag fires movestart inside the call and moveend, dragend and moveend after it, as in MapLibre GL JS (#2469)`,
-                ours === ml && ml === '|call movestart |ret move moveend dragend moveend', JSON.stringify({ours, ml}));
+                ours === ml && ml === '|call movestart zoomstart |ret move zoom zoomend moveend dragend moveend', JSON.stringify({ours, ml}));
             // The release during the ease fires the `moveend` of the drag, and the ease goes on without a second `movestart`.
             const attempt = async lib => { let out; for (let i = 0; i < 4 && (i === 0 || out === 'RETRY'); i++) out = await dragEase(lib, second, true); return out; };
             const earlyOurs = await attempt('ours'), earlyMl = await attempt('ml');
             check(`[${mode}] ${second} during a drag, released while it runs, fires dragend and moveend and then the rest of the ease with no second movestart, as in MapLibre GL JS (#2469)`,
-                earlyOurs === earlyMl && earlyMl === '|call movestart |ret move dragend moveend move moveend', JSON.stringify({earlyOurs, earlyMl}));
+                earlyOurs === earlyMl && earlyMl === '|call movestart zoomstart |ret move zoom dragend moveend move zoom zoomend moveend', JSON.stringify({earlyOurs, earlyMl}));
         }
         // resize() fires movestart, move, resize and moveend inside the call, also for an unchanged size, and the observer of
         // the container fires them once more after a change of the size, as in MapLibre GL JS (#2395).
@@ -772,7 +773,7 @@ for (const mode of renderers) {
             await new Promise(r => m.once('load', r));
             await new Promise(r => setTimeout(r, 300));
             const log = [];
-            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            for (const t of ['movestart', 'move', 'moveend']) m.on(t, () => { if (log.at(-1) !== t || (t !== 'move' && t !== 'zoom')) log.push(t); });
             if (scenario === 'afterJump') m.jumpTo({center: [12, 46]});
             log.push('|call');
             if (scenario === 'flyTo') m.flyTo({center: [20, 50], duration: 600});
@@ -795,7 +796,7 @@ for (const mode of renderers) {
             const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:400px;height:400px;z-index:99'}));
             const m = new mod.Map({container: el, renderer, center: [10, 45], zoom: 4, attributionControl: false, style: {version: 8, sources: {}, layers: [{id: 'bg', type: 'background'}]}});
             await new Promise(r => m.once('load', r));
-            const log = []; for (const t of ['movestart', 'move', 'moveend', 'dragstart', 'drag', 'dragend']) m.on(t, () => { if (log.at(-1) !== t || t !== 'move') log.push(t); });
+            const log = []; for (const t of ['movestart', 'move', 'moveend', 'dragstart', 'drag', 'dragend']) m.on(t, () => { if (log.at(-1) !== t || (t !== 'move' && t !== 'zoom')) log.push(t); });
             const marker = new mod.Marker().setLngLat([10, 45]).addTo(m).getElement();
             const c = m.getCanvas(), frame = () => new Promise(r => requestAnimationFrame(() => r()));
             const send = (type, [x, y]) => c.dispatchEvent(new PointerEvent(type, {bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, pointerId: 1, pointerType: 'mouse', isPrimary: true}));
@@ -6409,6 +6410,35 @@ for (const mode of renderers) {
             return {flat: await red(false), terrain: await red(true)};
         }, mode);
         check(`[${mode}] the globe with 3D terrain: the area at the pole is drawn (#1984)`, r.flat > 50000 && Math.abs(r.terrain - r.flat) < r.flat * 0.01, JSON.stringify(r));
+    }
+    // #2013: with 3D terrain on flat ground (0 m), fill-translate draws as without terrain: a square across the corner of
+    // four tiles is moved 100 px down the screen (anchor viewport, bearing 45, pitch 30, a zoom between levels), whole.
+    // Before, the picture of each ground tile moved it by pixels of the picture and along the axes of the map (75 px off).
+    {
+        const r = await page.evaluate(async renderer => {
+            const mod = await import('/dist/map-jr-gl-maplibre-compat.js');
+            const shot = (map, w, h) => new Promise(r => { map.once('render', () => { const k = Object.assign(document.createElement('canvas'), {width: w, height: h}).getContext('2d'); k.drawImage(map.getCanvas(), 0, 0, w, h); r(k.getImageData(0, 0, w, h).data); }); map.triggerRepaint(); });
+            const c = Object.assign(document.createElement('canvas'), {width: 256, height: 256}), g = c.getContext('2d');
+            g.fillStyle = 'rgb(128,0,0)'; g.fillRect(0, 0, 256, 256); // 0 m in the terrarium encoding
+            const blue = async terrain => {
+                const el = document.body.appendChild(Object.assign(document.createElement('div'), {style: 'position:fixed;left:0;top:0;width:500px;height:400px;z-index:60'}));
+                const style = {version: 8, sources: {dem: {type: 'raster-dem', tiles: [c.toDataURL('image/png')], encoding: 'terrarium', tileSize: 256, maxzoom: 4},
+                    sq: {type: 'geojson', data: {type: 'Polygon', coordinates: [[[-6, -6], [6, -6], [6, 6], [-6, 6], [-6, -6]]]}}},
+                    ...(terrain ? {terrain: {source: 'dem'}} : {}), layers: [{id: 'bg', type: 'background', paint: {'background-color': '#fff'}},
+                        {id: 'sq', type: 'fill', source: 'sq', paint: {'fill-color': '#00f', 'fill-antialias': false, 'fill-translate': [0, 100], 'fill-translate-anchor': 'viewport'}}]};
+                const map = new mod.Map({container: el, style, center: [0, 8], zoom: 2.4, bearing: 45, pitch: 30, renderer, attributionControl: false, fadeDuration: 0});
+                try {
+                    await new Promise(r => map.once('idle', r));
+                    const d = await shot(map, 500, 400);
+                    let n = 0, sx = 0, sy = 0;
+                    for (let i = 0; i < d.length; i += 4) if (d[i + 2] > 200 && d[i] < 60 && d[i + 1] < 60) { n++; sx += (i / 4) % 500; sy += Math.floor(i / 4 / 500); }
+                    return {n, x: Math.round(sx / n), y: Math.round(sy / n)};
+                } finally { map.remove(); el.remove(); }
+            };
+            return {flat: await blue(false), terrain: await blue(true)};
+        }, mode);
+        check(`[${mode}] 3D terrain: fill-translate across a tile edge draws as without terrain, whole and in the same place (#2013)`,
+            r.flat.n > 1000 && Math.abs(r.terrain.n - r.flat.n) < r.flat.n * 0.03 && Math.hypot(r.terrain.x - r.flat.x, r.terrain.y - r.flat.y) < 2, JSON.stringify(r));
     }
     // #670: on a tilted map queryRenderedFeatures finds a circle where it is drawn: smaller far from the camera
     // (circle-pitch-scale: map), and an ellipse on the ground with circle-pitch-alignment: map. Both the array and the promise.
