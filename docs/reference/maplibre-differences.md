@@ -634,11 +634,11 @@ The camera methods of the entry `@map-jr/map-jr-gl/maplibre-compat` (`jumpTo`, `
 
 As in MapLibre GL JS, `jumpTo`, `setCenter`, `setZoom`, `setBearing`, `setPitch`, `setPadding`, and `easeTo`, `flyTo` and `fitBounds` with `duration: 0` and without `around`, fire all the events of their move before they return, and the engine's later report of the same move fires no second `move`.
 
-As in MapLibre GL JS, an `easeTo`, `flyTo` or `fitBounds` that is called during a mouse drag does not stop the drag. The call fires `movestart` for the ease, the end of the ease fires `moveend`, and the release of the pointer fires `dragend` and a second `moveend`.
+As in MapLibre GL JS, an `easeTo`, `flyTo` or `fitBounds` that is called during a mouse drag does not stop the drag. The call fires `movestart` and `zoomstart` for the ease, the end of the ease fires `moveend`, and the release of the pointer fires `dragend` and a second `moveend`.
 
 A release while the ease runs fires `dragend` and `moveend`, and the ease then ends with its own `moveend` and no second `movestart`.
 
-`stop()`, `jumpTo` and a second `easeTo` during the drag can still fire other events than MapLibre GL JS does. In this library the `zoomstart` of such an ease fires after the call returns, as it does for any ease that changes the zoom.
+`stop()`, `jumpTo` and a second `easeTo` during the drag can still fire other events than MapLibre GL JS does.
 
 The option `zoomSnap` and `setZoomSnap` work as in MapLibre GL JS: with a value above 0, the zoom of `jumpTo`, `easeTo`, `flyTo`, `zoomIn`, `zoomOut`, the double-click, the keyboard and the navigation buttons goes to the nearest multiple of the value, and `cameraForBounds` and `fitBounds` go to the multiple below. A turn of a mouse wheel ends at the next multiple in the direction of the turn, as in MapLibre GL JS. A trackpad and a pinch do not snap, in either library.
 
