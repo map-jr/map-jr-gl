@@ -113,6 +113,20 @@ test('renderToSVG draws each glyph of text along a line of a tilted view in its 
     }
 });
 
+test('renderToSVG draws a pitch that is not a number as 0 and warns once (#395)', async () => {
+    const warnings: string[] = [];
+    const warn = console.warn;
+    console.warn = (m: string) => { warnings.push(m); };
+    try {
+        for (const pitch of [NaN, 'abc', {}]) {
+            const {svg} = await renderToSVG({style, ...view, pitch: pitch as number, fetch});
+            assert.match(svg, /<path fill="#ff0000"/, `the fill is drawn with pitch ${String(pitch)}`);
+        }
+    } finally { console.warn = warn; }
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /^\[map-jr-gl\] E395 .*"pitch".*Pass a number in degrees/);
+});
+
 test('firstViewOptions passes the pitch of the description to the render (#2513)', () => {
     assert.equal(firstViewOptions({style, initialView: {center: [0, 0], zoom: 1, pitch: 30}} as any).pitch, 30);
 });

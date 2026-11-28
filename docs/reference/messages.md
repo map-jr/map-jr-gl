@@ -765,6 +765,14 @@ addProtocol("pmtiles"): the library reads pmtiles:// URLs itself and does not us
 new Map(): canvasContextAttributes.preserveDrawingBuffer has no effect. Read the canvas with map.toBlob(), and remove the option.
 ```
 
+## E395
+
+`Warning` `Server renderer`
+
+```text
+server render: "pitch" is <pitch>, which is not a number. The view is drawn with a pitch of 0. Pass a number in degrees, for example pitch: 45.
+```
+
 ## E415
 
 `Error` `Both entries`

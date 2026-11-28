@@ -257,6 +257,9 @@ function fitBounds(bounds: LngLatBoundsInput, padding: PaddingInput | undefined,
     return fitBox(b.length > 2 ? b as number[] : [...toLngLat(b[0] as LngLatLike), ...toLngLat(b[1] as LngLatLike)], width, height, p, p, maxZoom);
 }
 
+// The warning about a `pitch` that is not a number is shown once per process; it holds no state of a map.
+let warnedPitch = false;
+
 /** `renderToSVG`, with the view that the SVG shows (`renderFirstView` needs it for the scale and the compass). */
 async function renderView(o: RenderOptions, rootAttrs = 'data-map-jr-ssr="" style="position:absolute;inset:0;width:100%;height:100%"'): Promise<RenderResult & {view: {lat: number; zoom: number; bearing: number}}> {
     // Wrapped, not passed by reference: Cloudflare Workers reject calls to a detached global `fetch`.
@@ -304,8 +307,11 @@ async function renderView(o: RenderOptions, rootAttrs = 'data-map-jr-ssr="" styl
     const layers = style.layers.map(compileLayer).filter((l): l is CompiledLayer => !!l);
     const tr = new Transform();
     tr.width = o.width; tr.height = o.height;
-    if (o.bounds) { const fit = fitBounds(o.bounds, o.padding, o.width, o.height, o.fitMaxZoom ?? (o as FirstViewOptionsBase).maxZoom ?? 22); tr.set(fit.center, fit.zoom, o.bearing ?? 0, o.pitch); }
-    else tr.set(o.center!, o.zoom!, o.bearing ?? 0, o.pitch);
+    // A pitch that is not a number would leave the view with a pitch of NaN and draw nothing.
+    let pitch = o.pitch;
+    if (pitch != null && Number.isNaN(+pitch)) { pitch = 0; if (!warnedPitch) { warnedPitch = true; console.warn(`[map-jr-gl] E395 server render: "pitch" is ${String(o.pitch)}, which is not a number. The view is drawn with a pitch of 0. Pass a number in degrees, for example pitch: 45.`); } }
+    if (o.bounds) { const fit = fitBounds(o.bounds, o.padding, o.width, o.height, o.fitMaxZoom ?? (o as FirstViewOptionsBase).maxZoom ?? 22); tr.set(fit.center, fit.zoom, o.bearing ?? 0, pitch); }
+    else tr.set(o.center!, o.zoom!, o.bearing ?? 0, pitch);
 
     const builder = new TileBuilder(fetchFn);
     builder.setStyle(style.layers, state);
