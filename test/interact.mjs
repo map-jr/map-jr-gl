@@ -3298,7 +3298,7 @@ for (const mode of renderers) {
                     layers: [{id: 't', type: 'symbol', source: 'p', layout: {'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-size': 16}}]}});
                 await new Promise(r => { m.once('idle', r); setTimeout(r, 8000); });
                 // (The row through the road is scanned from end to end, because the text is found on its circles, which leave a gap
-                // between them and end inside its first and last glyph. `found` counts the hits in each of the three lines.)
+                // between them and end inside its first and last glyph. `found` counts the hits in each of the three lines, and each line must have one.)
                 const y = m.project([0, 0]).y, found = [0, 0, 0], a = m.project([-40, 0]).x, b = m.project([40, 0]).x;
                 let most = 0;
                 for (let x = a; x < b; x += 2) {
@@ -3312,7 +3312,7 @@ for (const mode of renderers) {
             return out;
         });
         check('[main] queryRenderedFeatures finds the label of a road that comes as several lines once, with both renderers (#2460)',
-            ['main', 'worker'].every(r => roadParts[r].all === 1 && roadParts[r].most === 1 && roadParts[r].found.filter(n => n > 0).length >= 2), JSON.stringify(roadParts));
+            ['main', 'worker'].every(r => roadParts[r].all === 1 && roadParts[r].most === 1 && roadParts[r].found.every(n => n > 0)), JSON.stringify(roadParts));
         // On the globe a query finds text on a line where its glyphs are drawn, as MapLibre GL JS does: the line between
         // two of its points is a curve on the screen, and the glyphs lie on that curve (#1995). The map is cut into cells
         // of 25 pixels; each cell with dark pixels of the text must be found by a query of the cell, at zoom 2.5 and across
