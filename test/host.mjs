@@ -5583,13 +5583,15 @@ for (const mode of renderers) {
         await open('fail', mode);
         await page.waitForTimeout(1500);
         const fail = await red();
-        await page.waitForTimeout(1500);
-        const tries = Math.max(0, ...[...seen].filter(([k]) => k.startsWith('/dem2589fail/0/')).map(([, n]) => n));
+        // (The retries come after 0.5 s and 1 s more; a loaded runner can take longer, so the check waits up to 15 s.)
+        const tries = () => Math.max(0, ...[...seen].filter(([k]) => k.startsWith('/dem2589fail/0/')).map(([, n]) => n));
+        for (const end = Date.now() + 15000; tries() < 2 && Date.now() < end;) await page.waitForTimeout(100);
+        const asked = tries();
         await open('slow', mode);
         await page.waitForTimeout(4500);
         const slow = await red();
         await page.evaluate(() => window.host2589.destroy());
-        check(`[${mode}] 3D terrain: an elevation tile of the center that answers 500 draws the draped layers at once and is requested again (#2589)`, fail === '255,0,0' && tries >= 2, JSON.stringify({fail, tries}));
+        check(`[${mode}] 3D terrain: an elevation tile of the center that answers 500 draws the draped layers at once and is requested again (#2589)`, fail === '255,0,0' && asked >= 2, JSON.stringify({fail, asked}));
         check(`[${mode}] 3D terrain: a slow elevation tile of the center draws the draped layers after the hold, not only the background (#2589)`, slow === '255,0,0', JSON.stringify({slow}));
     } catch (e) { check(`[${mode}] the check of a failed or slow elevation tile of the center ran (#2589)`, false, String(e.message).split('\n')[0]); }
     await page.close();
